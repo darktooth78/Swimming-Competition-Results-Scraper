@@ -1,0 +1,29 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Logs and runtime output
+*.log
+
+# Local archives and scratch directories
+.archive/
+
+# Local tooling state
+.bob/
+
+# Local configuration backups
+config.json.backup
+
+# Build artifacts
+build/
+dist/

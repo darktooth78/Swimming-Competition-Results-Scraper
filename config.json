@@ -1,0 +1,34 @@
+{
+    "translations": {
+        "Backstroke": "Rücken",
+        "Breaststroke": "Brust",
+        "Butterfly": "Schmetterling",
+        "Freestyle": "Freistil",
+        "Ind. Medley": "Lagen",
+        "Medley": "Lagen",
+        "Free": "Freistil"
+    },
+    "timeouts": {
+        "element_wait": 10,
+        "cookie_button": 3,
+        "page_load": 15
+    },
+    "performance": {
+        "max_workers": 20,
+        "page_load_delay": 0,
+        "disable_images": true
+    },
+    "retry": {
+        "max_attempts": 3,
+        "delays": [1, 2, 4]
+    },
+    "csv": {
+        "delimiter": ";",
+        "encoding": "utf-8-sig"
+    },
+    "gui": {
+        "window_width": 600,
+        "window_height": 700,
+        "log_height": 200
+    }
+}
