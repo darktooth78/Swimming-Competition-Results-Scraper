@@ -115,6 +115,22 @@ print('OK')
 
 ---
 
+## Git Workflow
+
+- **NEVER** commit directly to `main`
+- Before making changes, create or switch to a dedicated branch
+- Use branch prefixes based on change type:
+  - `feature/<short-description>` for new functionality
+  - `fix/<short-description>` for bug fixes
+  - `chore/<short-description>` for maintenance, config, docs, and tooling changes
+- Keep branch names short, lowercase, and hyphenated
+- Example branch names:
+  - `feature/csv-export-options`
+  - `fix/metadata-location-parse`
+  - `chore/update-gitignore`
+
+---
+
 ## Code Style (Project-Specific)
 
 - German UI strings and log messages (intentional — German-speaking users)
