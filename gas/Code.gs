@@ -158,6 +158,23 @@ function main() {
       }
     }
 
+    // ── Step 6b: Re-queue swimmers whose participant page was never fetched ─
+    // These are real swimmers (name ≠ 'Unknown') with club = 'Unknown', meaning
+    // they were discovered on a club page but their participant page was never
+    // reached (e.g. due to a previous timeout). Queue them against their
+    // first_seen_event_id so their details get filled in.
+    const allSwimmers = loadSwimmers();
+    for (const sw of allSwimmers) {
+      if (sw.club !== 'Unknown' && sw.club !== '') continue;          // already resolved
+      if (!sw.name || sw.name === 'Unknown' || sw.name.startsWith('1. ')) continue;  // relay placeholder
+      const eid = sw.first_seen_event_id ? parseInt(sw.first_seen_event_id, 10) : null;
+      if (!eid) continue;
+      const key = `${eid}|${sw.swimmer_id}`;
+      if (!skipSet.has(key)) {
+        tasks.push({ event_id: eid, swimmer_id: sw.swimmer_id });
+      }
+    }
+
     // Add rescan tasks (bypass skip set)
     for (const rt of rescanTasks) {
       tasks.push({ event_id: rt.event_id, swimmer_id: rt.swimmer_id });
