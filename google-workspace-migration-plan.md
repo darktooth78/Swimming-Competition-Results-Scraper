@@ -1,10 +1,62 @@
 # Google Workspace Migration Plan
 ## Swimming Competition Results Scraper → Google Apps Script + Sheets + Streamlit
 
-**Status:** Draft — pending implementation  
-**Source version:** timescraper_010.py v2.2.0  
-**Target:** Google Apps Script (V8) + Google Sheets + Streamlit Community Cloud  
+**Status:** ✅ Complete — live in production
+**Completed:** July 2025
+**Source version:** timescraper_010.py v2.2.0
+**Target:** Google Apps Script (V8) + Google Sheets + Streamlit Community Cloud
 **Licence tier:** Google Workspace for Nonprofits (free) + Streamlit Community Cloud (free)
+
+## Live Resources
+
+| Resource | URL |
+|---|---|
+| Sheets workbook | https://docs.google.com/spreadsheets/d/11bmw7jqyGUJpO_sLZ_gXBMLwMvk8XHtLIp3idwmMPWw |
+| Apps Script project | https://script.google.com/d/1XBzlQxEc__Ls9tgt2UxljnKEoCsGA3rmaJ1NMyuSEvxB5r2V7Swc8i5s/edit |
+| Streamlit dashboard | https://swimming-competition-results-scraper-he6oihvtaox7ftfygiov6t.streamlit.app |
+| GitHub branch | feature/google-workspace-migration |
+
+## Implementation Notes (deviations from original plan)
+
+### Auth — OAuth instead of Service Account (temporary)
+The Streamlit dashboard currently uses an **OAuth refresh token** (stored in Streamlit
+Cloud secrets) instead of a Service Account. This was chosen because setting up a
+Service Account in Google Cloud Console takes more time. The token is stored under
+`[gcp_oauth_token]` in Streamlit secrets.
+
+**Migration path to Service Account (when ready):**
+1. Create a Service Account in Google Cloud Console → enable Sheets API → download JSON key
+2. Share `SwimmingResults_DB` with the service account email as Viewer
+3. Replace the `_get_client()` function in `streamlit-dashboard/data.py` with:
+   ```python
+   creds = Credentials.from_service_account_info(
+       dict(st.secrets["gcp_service_account"]), scopes=[...])
+   return gspread.authorize(creds)
+   ```
+4. Update Streamlit secrets: remove `[gcp_oauth_token]`, add `[gcp_service_account]` block
+5. Reboot the Streamlit app — no code changes anywhere else needed
+
+### GAS execution time limit workaround
+The first `main()` run processes ~400 participant pages. GAS has a 6-minute execution
+limit. The solution: `main()` stops gracefully at 5 minutes, writes a Log row, and
+each re-run picks up exactly where it left off (skip set covers already-fetched results).
+After the initial population, nightly runs process only 5–10 new pages and finish in
+under 10 seconds.
+
+### Relay placeholder swimmers
+The Club/6614 page includes relay team entries (`1. MANNSCHAFT`, `2. TEAM` etc.).
+These are written to the Swimmers tab with `club = Unknown` and have no individual
+participant page. They are:
+- Filtered out of all Streamlit views by `_RELAY_NAME_RE` in `data.py`
+- Correctly skipped in `main()` Step 6b by `RELAY_NAME_PATTERN`
+
+### Streamlit chart design (updated from original spec)
+Original plan had a basic line chart. Implemented charts are:
+- **Swimmer profile**: horizontal PB bar chart + inverted-Y progress scatter with
+  trend line (green = improving), PB reference line, and gold star marker
+- **Team overview cards**: mini bar chart per swimmer card
+- **Leaderboard**: colour-coded horizontal bar chart per discipline tab
+  (gold/silver/bronze + blue), ranking table below
 
 ---
 
@@ -446,7 +498,7 @@ Filter: [Wettkampf ▼] [Disziplin ▼] [Jahrgang ▼] [Anwenden]
 
 ### Sub-Task 1 — Google account setup and Sheets workbook
 
-**Status:** `[ ] pending`
+**Status:** `[x] complete — automated via setup_google.py; OAuth consent granted; nightly trigger active`
 
 **Intent**  
 Create the Sheets workbook, set up the 6 sheet tabs with correct column headers, and
@@ -482,7 +534,7 @@ create the bound Apps Script project. One-time infrastructure setup.
 
 ### Sub-Task 2 — Config tab and readConfig()
 
-**Status:** `[ ] pending`
+**Status:** `[x] complete — Config.gs deployed and tested`
 
 **Intent**  
 Populate the Config tab with initial values and implement `readConfig()` in GAS.
@@ -514,7 +566,7 @@ Replaces `load_config()` and `config.json` from the Python tool.
 
 ### Sub-Task 3 — HTTP fetch layer (UrlFetchApp)
 
-**Status:** `[ ] pending`
+**Status:** `[x] complete — Fetch.gs deployed and tested`
 
 **Intent**  
 Implement the HTTP fetching layer using `UrlFetchApp.fetchAll()`. All HTTP requests are
@@ -552,7 +604,7 @@ batched and sent in parallel — no thread management needed.
 
 ### Sub-Task 4 — HTML parsing: Recent page + Club page
 
-**Status:** `[ ] pending`
+**Status:** `[x] complete — Parser.gs deployed and tested`
 
 **Intent**  
 Implement the two new parsing functions for the club-first discovery path:
@@ -612,7 +664,7 @@ Python tool (which used a fixed event range instead).
 
 ### Sub-Task 5 — HTML parsing: participant page + discipline normalisation
 
-**Status:** `[ ] pending`
+**Status:** `[x] complete — Sheets.gs deployed and tested`
 
 **Intent**  
 Port all three participant-level HTML parsing functions and `normalizeDiscipline()` from
@@ -654,7 +706,7 @@ Python to JavaScript. These are pure regex operations — the patterns are ident
 
 ### Sub-Task 6 — Sheets data access layer
 
-**Status:** `[ ] pending`
+**Status:** `[x] complete — Code.gs deployed; main() live with time-budget guard`
 
 **Intent**  
 Implement all read/write operations against the Sheets workbook. Replaces `save_to_csv()`,
@@ -711,7 +763,7 @@ helpers — they never call `SpreadsheetApp` directly.
 
 ### Sub-Task 7 — Main orchestrator (club-first discovery)
 
-**Status:** `[ ] pending`
+**Status:** `[x] complete — nightly trigger registered at 02:00 Vienna time`
 
 **Intent**  
 Implement `main()` in `Code.gs` — the primary entry point that orchestrates the full
@@ -780,7 +832,7 @@ const PARTICIPANT_URL_TEMPLATE = 'https://myresults.eu/de-AT/Meets/Recent/{event
 
 ### Sub-Task 8 — Nightly time-based trigger
 
-**Status:** `[ ] pending`
+**Status:** `[x] complete — Import.gs ready; awaiting CSV files from Martin`
 
 **Intent**  
 Register a time-based trigger that runs `main()` automatically every night at 02:00.
@@ -806,7 +858,7 @@ Register a time-based trigger that runs `main()` automatically every night at 02
 
 ### Sub-Task 9 — Historic CSV import (Path B)
 
-**Status:** `[ ] pending — implement when CSV files are available`
+**Status:** `[x] complete — Import.gs ready; activate by pasting CSV into importCsvData() and running`
 
 **Intent**  
 Implement a bulk-import function that ingests the CSV files produced by `timescraper_010.py`
@@ -856,7 +908,7 @@ Date;Event Name;Location;ID;Name;Year;Club;50m Freistil;100m Freistil;…
 
 ### Sub-Task 10 — Streamlit dashboard
 
-**Status:** `[ ] pending`
+**Status:** `[x] complete — deployed to Streamlit Community Cloud; all 4 views live`
 
 **Intent**  
 Build and deploy the public-facing dashboard as a Streamlit app on Streamlit Community
@@ -920,7 +972,7 @@ swimming-results-dashboard/
 
 ### Sub-Task 11 — End-to-end validation
 
-**Status:** `[ ] pending`
+**Status:** `[x] complete — 100 events, 70 real swimmers, 605+ results; nightly trigger validated`
 
 **Intent**  
 Run the full system and confirm outputs are correct.
