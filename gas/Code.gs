@@ -158,24 +158,6 @@ function main() {
       }
     }
 
-    // Also check existing events in eventsCache that were already known —
-    // any swimmers in Swimmers tab that don't yet have results for those events.
-    // This handles: new swimmer added to Swimmers tab after event was already cached.
-    const existingEventIds = Object.keys(eventsCache)
-      .map(Number)
-      .filter(eid => !(eid in eventParticipants));  // already-known events only
-
-    for (const eid of existingEventIds) {
-      for (const sidStr of knownSwimmerSet) {
-        const key = `${eid}|${sidStr}`;
-        if (!skipSet.has(key)) {
-          tasks.push({ event_id: eid, swimmer_id: sidStr });
-        } else {
-          resultsSkipped++;
-        }
-      }
-    }
-
     // Add rescan tasks (bypass skip set)
     for (const rt of rescanTasks) {
       tasks.push({ event_id: rt.event_id, swimmer_id: rt.swimmer_id });
