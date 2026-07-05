@@ -18,6 +18,7 @@ Sheets structure:
              results_skipped | errors | rescans | duration_sec | notes
 """
 
+import re
 import streamlit as st
 import gspread
 import pandas as pd
@@ -72,10 +73,14 @@ def _sheet_to_df(tab_name: str) -> pd.DataFrame:
     return pd.DataFrame(records)
 
 
+# Relay placeholder pattern — "1. MANNSCHAFT", "2. TEAM", etc.
+_RELAY_NAME_RE = re.compile(r"^\d+\.\s+(MANNSCHAFT|TEAM)\b", re.IGNORECASE)
+
+
 @st.cache_data(ttl=300, show_spinner=False)
 def load_swimmers() -> pd.DataFrame:
     """
-    Return the Swimmers tab as a DataFrame.
+    Return real swimmers from the Swimmers tab (relay placeholders excluded).
     Columns: swimmer_id, name, birth_year, club, first_seen_event_id, last_updated
     """
     df = _sheet_to_df("Swimmers")
@@ -83,6 +88,8 @@ def load_swimmers() -> pd.DataFrame:
         return df
     df["swimmer_id"] = df["swimmer_id"].astype(str)
     df["birth_year"] = pd.to_numeric(df["birth_year"], errors="coerce")
+    # Drop relay team placeholders — they have no individual participant page
+    df = df[~df["name"].str.match(_RELAY_NAME_RE, na=False)].reset_index(drop=True)
     return df
 
 
