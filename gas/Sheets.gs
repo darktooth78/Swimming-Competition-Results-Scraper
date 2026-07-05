@@ -99,21 +99,22 @@ function loadEventsCache() {
 
 /**
  * Load all swimmers from the Swimmers tab.
- * @returns {{swimmer_id: string, name: string, birth_year: string, club: string}[]}
+ * @returns {{swimmer_id: string, name: string, birth_year: string, club: string, first_seen_event_id: string}[]}
  */
 function loadSwimmers() {
   const sheet   = getSheet('Swimmers');
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) return [];
 
-  const values = sheet.getRange(2, 1, lastRow - 1, 4).getValues();
+  const values = sheet.getRange(2, 1, lastRow - 1, 5).getValues();
   return values
     .filter(r => r[0])
-    .map(([swimmer_id, name, birth_year, club]) => ({
-      swimmer_id: String(swimmer_id),
-      name:       String(name),
-      birth_year: String(birth_year),
-      club:       String(club)
+    .map(([swimmer_id, name, birth_year, club, first_seen_event_id]) => ({
+      swimmer_id:          String(swimmer_id),
+      name:                String(name),
+      birth_year:          String(birth_year),
+      club:                String(club),
+      first_seen_event_id: String(first_seen_event_id)
     }));
 }
 
