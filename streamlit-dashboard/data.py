@@ -1,0 +1,147 @@
+"""
+data.py
+=======
+Google Sheets data loaders for the Streamlit dashboard.
+All functions are cached with a 5-minute TTL.
+
+Reads credentials from st.secrets["gcp_service_account"] — never stored in the repo.
+
+Sheets structure:
+  Swimmers:  swimmer_id | name | birth_year | club | first_seen_event_id | last_updated
+  Events:    event_id | event_name | date | location | last_updated | modling_participant_count
+  Results:   event_id | swimmer_id | discipline | time_str | time_sec | fetched_at | source
+  Log:       run_at | events_checked | events_new | swimmers_discovered | results_added |
+             results_skipped | errors | rescans | duration_sec | notes
+"""
+
+import streamlit as st
+import gspread
+import pandas as pd
+from google.oauth2.service_account import Credentials
+
+SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets.readonly",
+    "https://www.googleapis.com/auth/drive.readonly",
+]
+
+SPREADSHEET_NAME = "SwimmingResults_DB"
+
+
+@st.cache_resource(show_spinner=False)
+def _get_client() -> gspread.Client:
+    """Create and cache the gspread client using service account credentials."""
+    creds_dict = dict(st.secrets["gcp_service_account"])
+    creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
+    return gspread.authorize(creds)
+
+
+@st.cache_resource(show_spinner=False)
+def _get_spreadsheet():
+    """Open and cache the workbook handle."""
+    return _get_client().open(SPREADSHEET_NAME)
+
+
+def _sheet_to_df(tab_name: str) -> pd.DataFrame:
+    """Read a sheet tab and return a DataFrame with the first row as header."""
+    ws = _get_spreadsheet().worksheet(tab_name)
+    records = ws.get_all_records(numericise_ignore=["all"])
+    return pd.DataFrame(records)
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def load_swimmers() -> pd.DataFrame:
+    """
+    Return the Swimmers tab as a DataFrame.
+    Columns: swimmer_id, name, birth_year, club, first_seen_event_id, last_updated
+    """
+    df = _sheet_to_df("Swimmers")
+    if df.empty:
+        return df
+    df["swimmer_id"] = df["swimmer_id"].astype(str)
+    df["birth_year"] = pd.to_numeric(df["birth_year"], errors="coerce")
+    return df
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def load_events() -> pd.DataFrame:
+    """
+    Return the Events tab as a DataFrame.
+    Columns: event_id, event_name, date, location, last_updated, modling_participant_count
+    """
+    df = _sheet_to_df("Events")
+    if df.empty:
+        return df
+    df["event_id"] = df["event_id"].astype(str)
+    df["date_parsed"] = pd.to_datetime(df["date"], format="%d/%m/%Y", errors="coerce")
+    return df
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def load_results() -> pd.DataFrame:
+    """
+    Return the Results tab as a DataFrame.
+    Columns: event_id, swimmer_id, discipline, time_str, time_sec, fetched_at, source
+    Merges in event date and name, and swimmer name/birth_year.
+    """
+    df = _sheet_to_df("Results")
+    if df.empty:
+        return df
+
+    df["event_id"]   = df["event_id"].astype(str)
+    df["swimmer_id"] = df["swimmer_id"].astype(str)
+    df["time_sec"]   = pd.to_numeric(df["time_sec"], errors="coerce")
+
+    # Join event metadata
+    events = load_events()[["event_id", "event_name", "date", "location", "date_parsed"]]
+    df = df.merge(events, on="event_id", how="left")
+
+    # Join swimmer metadata
+    swimmers = load_swimmers()[["swimmer_id", "name", "birth_year", "club"]]
+    df = df.merge(swimmers, on="swimmer_id", how="left")
+
+    return df
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def load_log() -> pd.DataFrame:
+    """
+    Return the Log tab as a DataFrame.
+    Columns: run_at, events_checked, events_new, swimmers_discovered, results_added,
+             results_skipped, errors, rescans, duration_sec, notes
+    """
+    df = _sheet_to_df("Log")
+    if df.empty:
+        return df
+    df["run_at"] = pd.to_datetime(df["run_at"], errors="coerce")
+    return df
+
+
+def get_last_run_label() -> str:
+    """Return a human-readable 'last run' label from the Log tab."""
+    log = load_log()
+    if log.empty or "run_at" not in log.columns:
+        return "—"
+    last = log["run_at"].max()
+    if pd.isna(last):
+        return "—"
+    return last.strftime("%d.%m.%Y %H:%M")
+
+
+def compute_personal_bests(results_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Return a DataFrame with one row per (swimmer_id, discipline) = the fastest time.
+    Adds a 'is_pb' column to the input DataFrame.
+    """
+    if results_df.empty:
+        return results_df
+
+    pb_df = (
+        results_df
+        .dropna(subset=["time_sec"])
+        .groupby(["swimmer_id", "discipline"], as_index=False)["time_sec"]
+        .min()
+        .rename(columns={"time_sec": "pb_sec"})
+    )
+    merged = results_df.merge(pb_df, on=["swimmer_id", "discipline"], how="left")
+    merged["is_pb"] = merged["time_sec"] == merged["pb_sec"]
+    return merged
