@@ -92,6 +92,13 @@ function main() {
       .filter(e => !eventsCache[String(e.event_id)])
       .map(e => e.event_id);
 
+    // knownSwimmerIds: set of swimmer IDs already in the Swimmers tab (load once)
+    let knownSwimmerSet = new Set(loadSwimmers().map(s => s.swimmer_id));
+
+    // eventParticipants: tracks which (event_id, swimmer_id) pairs were found on club pages
+    // Used in Step 6 to avoid cross-joining ALL events × ALL swimmers
+    const eventParticipants = {};  // { eventId: [swimmerId, ...] }
+
     if (newEventIds.length > 0) {
       const clubUrls = newEventIds.map(
         eid => CLUB_PAGE_URL_TEMPLATE
@@ -102,53 +109,66 @@ function main() {
       const clubHtmlMap = fetchAllHtml(clubUrls, cfg);
 
       for (const eid of newEventIds) {
-        const url        = CLUB_PAGE_URL_TEMPLATE.replace('{event}', eid).replace('{club}', cfg.club_id);
-        const clubHtml   = clubHtmlMap[url];
-
-        // Find this event's name/date from the Recent page list
-        const eventMeta  = recentEvents.find(e => e.event_id === eid) || {};
-        let   modlingCount = 0;
+        const url       = CLUB_PAGE_URL_TEMPLATE.replace('{event}', eid).replace('{club}', cfg.club_id);
+        const clubHtml  = clubHtmlMap[url];
+        const eventMeta = recentEvents.find(e => e.event_id === eid) || {};
 
         if (!clubHtml) {
           errors++;
-          // Still log the event to avoid re-checking it
           upsertEvent(eid, eventMeta.event_name || 'Unknown', eventMeta.date || 'Unknown', null, 0);
           eventsNew++;
           eventsCache[String(eid)] = { event_name: eventMeta.event_name || 'Unknown', date: eventMeta.date || 'Unknown', location: '' };
+          eventParticipants[eid] = [];
           continue;
         }
 
         const participants = parseClubPage(clubHtml);
-        modlingCount = participants.length;
-        upsertEvent(eid, eventMeta.event_name || 'Unknown', eventMeta.date || 'Unknown', null, modlingCount);
+        upsertEvent(eid, eventMeta.event_name || 'Unknown', eventMeta.date || 'Unknown', null, participants.length);
         eventsNew++;
         eventsCache[String(eid)] = { event_name: eventMeta.event_name || 'Unknown', date: eventMeta.date || 'Unknown', location: '' };
+        eventParticipants[eid] = participants.map(p => String(p.participant_id));
 
+        // Add any newly discovered swimmers in one pass (no per-participant Sheets read)
         for (const p of participants) {
           const sidStr = String(p.participant_id);
-          if (!skipSet.has(`${eid}|${sidStr}`)) {
-            // Swimmer discovered — ensure row exists in Swimmers tab
-            const existingSwimmers = loadSwimmers();
-            const alreadyKnown     = existingSwimmers.some(s => s.swimmer_id === sidStr);
-            if (!alreadyKnown) {
-              upsertSwimmer(sidStr, p.name, 'Unknown', 'Unknown', eid);
-              swimmersDiscovered++;
-            }
+          if (!knownSwimmerSet.has(sidStr)) {
+            upsertSwimmer(sidStr, p.name, 'Unknown', 'Unknown', eid);
+            knownSwimmerSet.add(sidStr);
+            swimmersDiscovered++;
           }
         }
       }
     }
 
     // ── Step 6: Build participant task list ───────────────────────────────
-    const swimmers     = loadSwimmers();
-    const allEventIds  = Object.keys(eventsCache).map(Number);
-    const tasks        = [];       // {event_id, swimmer_id}
+    // Only queue (event, swimmer) pairs that were actually seen on a club page
+    // OR that are in the rescan list. Never cross-join all events × all swimmers.
+    const tasks = [];
 
-    for (const eid of allEventIds) {
-      for (const sw of swimmers) {
-        const key = `${eid}|${sw.swimmer_id}`;
+    // From club page discoveries (new events only)
+    for (const [eid, swimmerIds] of Object.entries(eventParticipants)) {
+      for (const sidStr of swimmerIds) {
+        const key = `${eid}|${sidStr}`;
         if (!skipSet.has(key)) {
-          tasks.push({ event_id: eid, swimmer_id: sw.swimmer_id });
+          tasks.push({ event_id: Number(eid), swimmer_id: sidStr });
+        } else {
+          resultsSkipped++;
+        }
+      }
+    }
+
+    // Also check existing events in eventsCache that were already known —
+    // any swimmers in Swimmers tab that don't yet have results for those events.
+    // This handles: new swimmer added to Swimmers tab after event was already cached.
+    const existingEventIds = Object.keys(eventsCache)
+      .map(Number)
+      .filter(eid => !(eid in eventParticipants));  // already-known events only
+
+    for (const eid of existingEventIds) {
+      for (const sidStr of knownSwimmerSet) {
+        const key = `${eid}|${sidStr}`;
+        if (!skipSet.has(key)) {
+          tasks.push({ event_id: eid, swimmer_id: sidStr });
         } else {
           resultsSkipped++;
         }
