@@ -4,7 +4,11 @@ data.py
 Google Sheets data loaders for the Streamlit dashboard.
 All functions are cached with a 5-minute TTL.
 
-Reads credentials from st.secrets["gcp_service_account"] — never stored in the repo.
+Auth: OAuth refresh token stored in st.secrets["gcp_oauth_token"].
+      Run generate_streamlit_token.py once locally to produce the token,
+      then paste the output TOML block into Streamlit Cloud secrets.
+      (Migrating to a Service Account later only requires swapping this
+       _get_client() function — nothing else changes.)
 
 Sheets structure:
   Swimmers:  swimmer_id | name | birth_year | club | first_seen_event_id | last_updated
@@ -17,21 +21,41 @@ Sheets structure:
 import streamlit as st
 import gspread
 import pandas as pd
-from google.oauth2.service_account import Credentials
-
-SCOPES = [
-    "https://www.googleapis.com/auth/spreadsheets.readonly",
-    "https://www.googleapis.com/auth/drive.readonly",
-]
+from google.oauth2.credentials import Credentials
+from google.auth.transport.requests import Request
 
 SPREADSHEET_NAME = "SwimmingResults_DB"
 
 
 @st.cache_resource(show_spinner=False)
 def _get_client() -> gspread.Client:
-    """Create and cache the gspread client using service account credentials."""
-    creds_dict = dict(st.secrets["gcp_service_account"])
-    creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
+    """
+    Build a gspread client from the OAuth refresh token stored in Streamlit secrets.
+
+    Secrets block (in Streamlit Cloud → App settings → Secrets):
+        [gcp_oauth_token]
+        token         = "..."
+        refresh_token = "..."
+        token_uri     = "https://oauth2.googleapis.com/token"
+        client_id     = "..."
+        client_secret = "..."
+        scopes        = ["https://www.googleapis.com/auth/spreadsheets.readonly", ...]
+    """
+    t = st.secrets["gcp_oauth_token"]
+
+    creds = Credentials(
+        token         = t["token"],
+        refresh_token = t["refresh_token"],
+        token_uri     = t["token_uri"],
+        client_id     = t["client_id"],
+        client_secret = t["client_secret"],
+        scopes        = list(t["scopes"]),
+    )
+
+    # Refresh if expired (happens after ~1 hour; refresh_token keeps it alive)
+    if not creds.valid:
+        creds.refresh(Request())
+
     return gspread.authorize(creds)
 
 
@@ -79,9 +103,9 @@ def load_events() -> pd.DataFrame:
 @st.cache_data(ttl=300, show_spinner=False)
 def load_results() -> pd.DataFrame:
     """
-    Return the Results tab as a DataFrame.
-    Columns: event_id, swimmer_id, discipline, time_str, time_sec, fetched_at, source
-    Merges in event date and name, and swimmer name/birth_year.
+    Return the Results tab as a DataFrame, enriched with event and swimmer metadata.
+    Columns: event_id, swimmer_id, discipline, time_str, time_sec, fetched_at, source,
+             + event_name, date, location, date_parsed, name, birth_year, club
     """
     df = _sheet_to_df("Results")
     if df.empty:
@@ -118,19 +142,22 @@ def load_log() -> pd.DataFrame:
 
 def get_last_run_label() -> str:
     """Return a human-readable 'last run' label from the Log tab."""
-    log = load_log()
-    if log.empty or "run_at" not in log.columns:
+    try:
+        log = load_log()
+        if log.empty or "run_at" not in log.columns:
+            return "—"
+        last = log["run_at"].max()
+        if pd.isna(last):
+            return "—"
+        return last.strftime("%d.%m.%Y %H:%M")
+    except Exception:
         return "—"
-    last = log["run_at"].max()
-    if pd.isna(last):
-        return "—"
-    return last.strftime("%d.%m.%Y %H:%M")
 
 
 def compute_personal_bests(results_df: pd.DataFrame) -> pd.DataFrame:
     """
-    Return a DataFrame with one row per (swimmer_id, discipline) = the fastest time.
-    Adds a 'is_pb' column to the input DataFrame.
+    Add an 'is_pb' boolean column — True where time_sec equals the minimum
+    for that (swimmer_id, discipline) combination.
     """
     if results_df.empty:
         return results_df

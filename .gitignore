@@ -27,3 +27,11 @@ config.json.backup
 # Build artifacts
 build/
 dist/
+oauth_token.json
+
+# Streamlit / OAuth secrets
+streamlit_secret_token.json
+streamlit-dashboard/.streamlit/secrets.toml
+oauth_client.json
+client_secret_*.json
+streamlit_secret_token.json

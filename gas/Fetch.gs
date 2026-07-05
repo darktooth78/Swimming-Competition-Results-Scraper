@@ -28,6 +28,10 @@ const HTTP_HEADERS = {
  * @returns {string|null}
  */
 function fetchHtml(url, cfg) {
+  // Defensive defaults so the function works even if cfg is partial/undefined
+  const maxRetries  = (cfg && cfg.max_retries  != null) ? cfg.max_retries  : 3;
+  const retryDelays = (cfg && cfg.retry_delays)         ? cfg.retry_delays : [1, 2, 4];
+
   const options = {
     method:             'get',
     headers:            HTTP_HEADERS,
@@ -35,9 +39,9 @@ function fetchHtml(url, cfg) {
     followRedirects:    true
   };
 
-  for (let attempt = 0; attempt <= cfg.max_retries; attempt++) {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
     if (attempt > 0) {
-      const delayMs = ((cfg.retry_delays[attempt - 1]) || 4) * 1000;
+      const delayMs = ((retryDelays[attempt - 1]) || 4) * 1000;
       Utilities.sleep(delayMs);
     }
     try {
