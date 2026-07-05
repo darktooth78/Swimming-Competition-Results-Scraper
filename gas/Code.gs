@@ -34,7 +34,8 @@ const PARTICIPANT_URL_TEMPLATE = 'https://myresults.eu/de-AT/Meets/Recent/{event
  *  9. Append Log row
  */
 function main() {
-  const runStart = new Date();
+  const runStart   = new Date();
+  const MAX_MS     = 300000;   // stop after 5 min to stay inside the 6-min GAS limit
 
   // Counters
   let eventsChecked       = 0;
@@ -180,17 +181,30 @@ function main() {
       tasks.push({ event_id: rt.event_id, swimmer_id: rt.swimmer_id });
     }
 
-    // ── Step 7: Fetch + parse participant pages ───────────────────────────
-    const participantUrls = tasks.map(t =>
-      PARTICIPANT_URL_TEMPLATE
-        .replace('{event}',       t.event_id)
-        .replace('{participant}', t.swimmer_id)
-    );
+    // ── Step 7: Fetch + parse participant pages (in time-budgeted batches) ─
+    const BATCH = cfg.max_parallel || 100;
+    let tasksRemaining = 0;
 
-    const htmlMap = fetchAllHtml(participantUrls, cfg);
+    for (let batchStart = 0; batchStart < tasks.length; batchStart += BATCH) {
+      // Stop gracefully if we are within 1 min of the limit
+      if ((new Date() - runStart) > MAX_MS) {
+        tasksRemaining = tasks.length - batchStart;
+        notes.push(`Time budget reached — ${tasksRemaining} tasks deferred to next run`);
+        Logger.log(`main(): time budget reached at batch ${batchStart}, ${tasksRemaining} tasks deferred`);
+        break;
+      }
 
-    for (let ti = 0; ti < tasks.length; ti++) {
-      const task = tasks[ti];
+      const batch = tasks.slice(batchStart, batchStart + BATCH);
+      const participantUrls = batch.map(t =>
+        PARTICIPANT_URL_TEMPLATE
+          .replace('{event}',       t.event_id)
+          .replace('{participant}', t.swimmer_id)
+      );
+
+      const htmlMap = fetchAllHtml(participantUrls, cfg);
+
+      for (let ti = 0; ti < batch.length; ti++) {
+      const task = batch[ti];
       const url  = PARTICIPANT_URL_TEMPLATE
         .replace('{event}',       task.event_id)
         .replace('{participant}', task.swimmer_id);
@@ -220,6 +234,11 @@ function main() {
         appendResults(task.event_id, task.swimmer_id, results, 'scraper');
         resultsAdded += Object.keys(results).length;
       }
+      } // end batch inner loop
+    }   // end batch outer loop
+
+    if (tasksRemaining > 0) {
+      notes.push(`Re-run main() to process remaining ${tasksRemaining} tasks`);
     }
 
     // ── Step 8: Mark rescans done ─────────────────────────────────────────
