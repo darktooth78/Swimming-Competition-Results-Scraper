@@ -1,6 +1,6 @@
 # Swimming Competition Results Scraper
 
-**Version:** 2.2.0
+**Version:** 2.3.0
 **Author:** Swimming Results Team
 **Last Updated:** July 2026
 
