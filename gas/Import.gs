@@ -5,9 +5,11 @@
  *
  * Designed now, executed later when Martin provides the historic CSV files.
  *
- * CSV format (produced by timescraper_010.py):
- *   Date;Event Name;Location;ID;Name;Year;Club;50m Freistil;100m Freistil;…
- *   DD/MM/YYYY;<event name>;<location>;<swimmer_id>;<LASTNAME Firstname>;<year>;<club>;<time>;…
+ * CSV format (produced by timescraper_010.py v2.3+):
+ *   Date;Event Name;Location;ID;Name;Year;Club;Pool;50m Freistil;100m Freistil;…
+ *   DD/MM/YYYY;<event name>;<location>;<swimmer_id>;<LASTNAME Firstname>;<year>;<club>;<25m|50m>;<time>;…
+ *
+ * Legacy CSV (v2.2 and earlier) has no Pool column — defaults to "50m".
  *
  * Synthetic event key strategy for CSV rows:
  *   event_id = "csv_" + first 6 chars of MD5(event_name + "|" + date)
@@ -90,8 +92,8 @@ function importCsvData(csvString) {
   let rows_skipped   = 0;
   let errors         = 0;
 
-  // Fixed columns present in every CSV row
-  const FIXED_COLS = new Set(['Date', 'Event Name', 'Location', 'ID', 'Name', 'Year', 'Club']);
+  // Fixed columns present in every CSV row (Pool added in v2.3; tolerate its absence)
+  const FIXED_COLS = new Set(['Date', 'Event Name', 'Location', 'ID', 'Name', 'Year', 'Club', 'Pool']);
 
   for (const row of rows) {
     rows_processed++;
@@ -103,6 +105,7 @@ function importCsvData(csvString) {
       const name       = (row['Name']       || '').trim();
       const year       = (row['Year']       || '').trim();
       const club       = (row['Club']       || '').trim();
+      const pool       = (row['Pool']       || '50m').trim();  // "25m" or "50m"; absent in v2.2 CSVs
 
       if (!swimmerId || !eventName || !date) { errors++; continue; }
 
@@ -110,7 +113,7 @@ function importCsvData(csvString) {
       const eventId = makeCsvEventId(eventName, date);
 
       // Upsert event and swimmer
-      upsertEvent(eventId, eventName, date, location, null);
+      upsertEvent(eventId, eventName, date, location, null, pool);
       upsertSwimmer(swimmerId, name, year, club, eventId);
 
       // Collect discipline columns
