@@ -25,10 +25,10 @@ The swimmer view surfaces the following insights when a swimmer is selected:
 | **Improvement callout** | Green banner with average time improvement per discipline (only shown when meaningful improvement exists) |
 | **Personal Bests bar chart** | Horizontal bars per discipline — green when improved >0.5 s since first race; hover shows improvement delta (e.g. `−3.45s`) |
 | **Recent form cards** | One card per discipline: PB time, ↑/↓/→ trend arrow, last result, last 3 results |
-| **Progress chart** | Scatter + line per discipline tab, inverted Y axis (up = faster), gold star on PB, dashed PB reference line, dotted trend line (green = improving) |
-| **Results table** | Full per-discipline result history with 🏅 badge on PB rows |
+| **Progress chart** | Scatter + line per discipline tab, inverted Y axis (up = faster), gold star on PB, dashed PB reference line, dotted trend line (green = improving); ◆ purple = 25m, ● blue = 50m |
+| **Results table** | Full per-discipline result history with Pool column and 🏅 badge on PB rows |
 
-Filters (discipline, competition, date range) apply only to the progress chart and results table — the PB bar and recent form cards always show the full career picture.
+Filters (discipline, competition, **pool length**, date range) apply only to the progress chart and results table — the PB bar and recent form cards always show the full career picture.
 
 ---
 
@@ -65,3 +65,18 @@ Secrets (Google OAuth token) are stored in the Streamlit Cloud app settings — 
 Results are read from the **SwimmingResults_DB** Google Sheet via the gspread library.
 Sheets: `Swimmers`, `Events`, `Results`, `Log`.
 All data loaders use `@st.cache_data(ttl=300)` — data refreshes every 5 minutes.
+
+### Events sheet column layout
+
+| Col | Header | Content |
+|---|---|---|
+| A | `event_id` | Numeric myresults.eu event ID, or `csv_xxxxxx` for imported rows |
+| B | `event_name` | Full competition name |
+| C | `date` | Last day of event — `DD/MM/YYYY` |
+| D | `location` | Venue name |
+| E | `last_updated` | ISO timestamp of last write |
+| F | `modling_participant_count` | Number of SU MöDLING starters |
+| G | `pool` | Pool length — `25m` or `50m` |
+
+> **One-time setup:** add the header `pool` to cell **G1** of the Events sheet.
+> Then run `backfillPoolSize()` in the Apps Script editor to populate existing rows.

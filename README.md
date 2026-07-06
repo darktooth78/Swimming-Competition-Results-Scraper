@@ -27,6 +27,7 @@ A multi-threaded web scraper that extracts swimming competition results from **m
 - ✅ **Fastest time per discipline** — when the same stroke appears under multiple category suffixes, only the best time is kept
 - ✅ **CSV sorted by date descending** — newest competition always on top
 - ✅ **Discipline columns in canonical order** — Freistil → Brust → Schmetterling → Rücken → Lagen → other; shortest distance first within each stroke
+- ✅ **Pool size column** — `Pool` (`25m` / `50m`) fetched from the event Overview page and stored in the CSV
 
 ---
 
@@ -96,8 +97,8 @@ All settings live in `config.json` (auto-created on first run):
 Semicolon-delimited CSV (`utf-8-sig` encoding for Excel compatibility):
 
 ```
-Date;Event Name;Location;ID;Name;Year;Club;25m Freistil;50m Freistil;100m Freistil;...;50m Brust;...
-24/05/2026;53. Internationales Swimcity Wels Meeting;Welldorado Wels;306991;BLOBNER Vincent;2014;SU MöDLING;...
+Date;Event Name;Location;ID;Name;Year;Club;Pool;25m Freistil;50m Freistil;...
+24/05/2026;53. Internationales Swimcity Wels Meeting;Welldorado Wels;306991;BLOBNER Vincent;2014;SU MöDLING;50m;...
 ```
 
 ### Static columns
@@ -111,6 +112,7 @@ Date;Event Name;Location;ID;Name;Year;Club;25m Freistil;50m Freistil;100m Freist
 | Name | `LASTNAME Firstname` |
 | Year | Birth year |
 | Club | Swim club name |
+| Pool | Pool length — `25m` (short course) or `50m` (long course) |
 
 ### Dynamic discipline columns
 
@@ -150,6 +152,7 @@ timescraper_010.py
 ├── get_http_session()              # Lazily creates shared requests.Session (pool = workers+2)
 ├── fetch_html(url)                 # Single HTTP GET, returns HTML string or None
 ├── parse_metadata_from_html()      # Extracts event name / date / location via regex
+├── parse_pool_size_from_overview() # Fetches /Overview page, parses "Bad" field → "25m"/"50m"
 ├── parse_participant_from_html()   # Extracts name / year / club via regex
 ├── parse_results_from_html()       # Finds "Ergebnisse" section, extracts times per discipline
 ├── normalize_discipline()          # Strips heat/gender/age/suffix; translates EN→DE; keeps NNm Stroke
@@ -218,7 +221,7 @@ print('✅ OK')
 
 ```
 MyResult/
-├── timescraper_010.py        # Main scraper application (v2.2.0)
+├── timescraper_010.py        # Main scraper application (v2.3.0)
 ├── config.json               # Runtime configuration
 ├── README.md                 # This file
 ├── AGENTS.md                 # AI agent rules
@@ -258,7 +261,9 @@ A web dashboard that reads results from Google Sheets and displays them with int
 | `File is not writable` | Close Excel if the CSV is open |
 | Empty results for an event | Participant was not registered at that event — expected behaviour |
 | Many "Unknown" names | Event IDs outside the participant's competition history |
-| Discipline appears twice in columns | Should not happen in v2.2.0 — all suffixes are stripped before column assignment |
+| Discipline appears twice in columns | Should not happen in v2.3.0 — all suffixes are stripped before column assignment |
+| Pool shows `50m` for old events | Run `backfillPoolSize()` in Apps Script once, then add header `pool` to cell G1 of the Events sheet |
+| Dashboard pool filter shows no 25m results | Confirm cell G1 of the Events sheet contains exactly `pool` (lowercase) |
 
 ### Debug Mode
 
@@ -268,12 +273,14 @@ Check **Debug Mode** in the GUI to enable `logging.DEBUG` output — all fetch U
 
 ## Version History
 
-### v2.3.0 — July 2026 — Streamlit dashboard swimmer insights
-- **Swimmer profile redesign** — new sections: 4 highlight metric cards, improvement callout banner, recent form cards per discipline, improvement deltas on PB bar chart, trend captions on progress charts
-- **Age group label** — header now shows age group (Mini / Jugend A-B / Junioren / Erwachsene) derived from birth year
-- **Best meet** — metric card showing which competition produced the most personal bests
-- **Green PB bars** — disciplines where the swimmer improved >0.5 s since their first race are highlighted in green
-- **Bilingual** — all new strings added to DE and EN in `i18n.py`
+### v2.3.0 — July 2026 — pool size tracking
+- **Pool column** — `Pool` (`25m` / `50m`) added as the 8th static CSV column; value fetched once per event from the `/Overview` page ("Bad" field: e.g. `25m (SCM) Hallenbad`)
+- **GAS backfill** — `backfillPoolSize()` in `Sheets.gs` populates column G of the Events sheet for all already-stored events; safe to re-run (skips rows already set)
+- **Google Sheets** — Events sheet gains column G (`pool`); must add header `pool` to G1 manually once
+- **Streamlit dashboard** — pool filter added to all four views; progress chart markers differentiate 25m (◆ purple diamond) from 50m (● blue circle); results table shows pool badge; event headers in Recent Results show `🔵 25m` / `⚪ 50m`
+- **Swimmer profile redesign** — 4 highlight metric cards, improvement callout banner, recent form cards, improvement deltas on PB bar chart, trend captions on progress charts
+- **Age group label**, **Best meet** card, **green PB bars** (>0.5 s improvement)
+- **Bilingual** — all new strings in DE and EN in `i18n.py`
 
 ### v2.2.0 — July 2026 — result data quality & CSV structure
 - **Discipline suffix stripping** — race names like `50m Freistil Kinder` are normalised to `50m Freistil`; age-group labels, heat labels, gender qualifiers after the stroke name are all dropped

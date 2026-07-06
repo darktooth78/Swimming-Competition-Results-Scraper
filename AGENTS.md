@@ -6,7 +6,7 @@ This file provides guidance to agents when working with code in this repository.
 
 **Stack**: Python 3, `requests`, CustomTkinter GUI  
 **Purpose**: Multi-threaded HTTP scraper for myresults.eu swimming competition data  
-**Version**: 2.2.0 — no Selenium, no Chrome
+**Version**: 2.3.0 — no Selenium, no Chrome
 
 ---
 
@@ -18,11 +18,12 @@ All data on myresults.eu is **fully server-side rendered**. A plain `requests.ge
 
 ```
 process_single_event()
-  → fetch_html()                      # HTTP GET via shared Session
-  → parse_participant_from_html()     # regex on personendetails table
-  → parse_metadata_from_html()        # regex on myresults_meetname2 paragraph
-  → parse_results_from_html()         # find Ergebnisse header, then odd/even rows
-  → save_to_csv()                     # thread-safe write with csv_lock
+  → fetch_html()                        # HTTP GET via shared Session
+  → parse_participant_from_html()       # regex on personendetails table
+  → parse_metadata_from_html()          # regex on myresults_meetname2 paragraph
+  → parse_pool_size_from_overview()     # HTTP GET to /Overview; parses "Bad" field
+  → parse_results_from_html()           # find Ergebnisse header, then odd/even rows
+  → save_to_csv()                       # thread-safe write with csv_lock
 ```
 
 ---
@@ -125,6 +126,23 @@ print('OK')
 
 **Big test** (198 tasks, events 2285–2350, 3 participants):
 - Expected: 29 rows saved, 0 errors, < 2 s wall time
+
+---
+
+## GAS / Google Sheets
+
+### Events sheet column layout
+- Columns A–G: `event_id | event_name | date | location | last_updated | modling_participant_count | pool`
+- Column G (`pool`) was added in v2.3.0 — **header `pool` must be in cell G1** (add once manually)
+- `upsertEvent(id, name, date, location, modlingCount, pool)` — 6th arg is optional; keeps existing value if omitted
+- `loadEventsCache()` reads 7 columns and exposes `pool` key; falls back to `"50m"` for blank cells
+- `backfillPoolSize()` in `Sheets.gs` — one-shot backfill for pre-existing rows; skips rows already set; respects 5-min GAS time budget; safe to re-run
+- GAS does **not** auto-sync from GitHub — any new functions must be pasted into the Apps Script editor manually
+
+### Streamlit deployment
+- Streamlit Cloud watches the **`feature/google-workspace-migration`** branch, **not** `main`
+- Merge flow: feature branch → `main` → `feature/google-workspace-migration` → push both
+- The Apps Script project is a separate copy; GitHub pushes do not update it automatically
 
 ---
 
