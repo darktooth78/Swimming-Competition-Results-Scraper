@@ -10,7 +10,7 @@
  *   Swimmers:     A=swimmer_id, B=name, C=birth_year, D=club,
  *                 E=first_seen_event_id, F=last_updated
  *   Events:       A=event_id, B=event_name, C=date, D=location,
- *                 E=last_updated, F=modling_participant_count
+ *                 E=last_updated, F=modling_participant_count, G=pool
  *   Results:      A=event_id, B=swimmer_id, C=discipline, D=time_str,
  *                 E=time_sec, F=fetched_at, G=source
  *   Rescan_Queue: A=swimmer_id, B=rescan_start, C=rescan_end,
@@ -83,10 +83,15 @@ function loadEventsCache() {
   const cache   = {};
   if (lastRow < 2) return cache;
 
-  const values = sheet.getRange(2, 1, lastRow - 1, 4).getValues();
-  for (const [eventId, eventName, date, location] of values) {
+  const values = sheet.getRange(2, 1, lastRow - 1, 7).getValues();
+  for (const [eventId, eventName, date, location, , , pool] of values) {
     if (eventId) {
-      cache[String(eventId)] = { event_name: String(eventName), date: String(date), location: String(location) };
+      cache[String(eventId)] = {
+        event_name: String(eventName),
+        date:       String(date),
+        location:   String(location),
+        pool:       String(pool || '50m') || '50m'
+      };
     }
   }
   return cache;
@@ -168,8 +173,9 @@ function upsertSwimmer(id, name, birthYear, club, firstSeenEventId) {
  * @param {string} date
  * @param {string|null} location
  * @param {number} modlingCount
+ * @param {string|null} [pool]  "25m" or "50m" (optional, not overwritten if already set)
  */
-function upsertEvent(id, name, date, location, modlingCount) {
+function upsertEvent(id, name, date, location, modlingCount, pool) {
   const sheet   = getSheet('Events');
   const now     = new Date().toISOString();
   const lastRow = sheet.getLastRow();
@@ -179,18 +185,20 @@ function upsertEvent(id, name, date, location, modlingCount) {
     const colA = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
     for (let i = 0; i < colA.length; i++) {
       if (String(colA[i][0]) === idStr) {
-        const row      = sheet.getRange(i + 2, 1, 1, 6).getValues()[0];
+        const row      = sheet.getRange(i + 2, 1, 1, 7).getValues()[0];
         const newName  = (name     && name     !== 'Unknown') ? name     : (row[1] || name);
         const newDate  = (date     && date     !== 'Unknown') ? date     : (row[2] || date);
         const newLoc   = (location && location !== 'Unknown') ? location : (row[3] || location || '');
         const newCount = modlingCount != null ? modlingCount : row[5];
-        sheet.getRange(i + 2, 1, 1, 6).setValues([[idStr, newName, newDate, newLoc, now, newCount]]);
+        // Only write pool if provided; keep existing value otherwise
+        const newPool  = pool || row[6] || '50m';
+        sheet.getRange(i + 2, 1, 1, 7).setValues([[idStr, newName, newDate, newLoc, now, newCount, newPool]]);
         return;
       }
     }
   }
 
-  sheet.appendRow([idStr, name, date, location || '', now, modlingCount != null ? modlingCount : 0]);
+  sheet.appendRow([idStr, name, date, location || '', now, modlingCount != null ? modlingCount : 0, pool || '50m']);
 }
 
 

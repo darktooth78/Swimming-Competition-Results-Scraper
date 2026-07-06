@@ -32,7 +32,7 @@ def render(lang: str) -> None:
     disciplines  = sorted(results["discipline"].dropna().unique().tolist())
     birth_years  = sorted(results["birth_year"].dropna().unique().astype(int).tolist())
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     with col1:
         sel_comp = st.selectbox(
             t("filter_competition", lang),
@@ -51,6 +51,9 @@ def render(lang: str) -> None:
             [t("all_years", lang)] + [str(y) for y in birth_years],
             key="rec_year",
         )
+    with col4:
+        pool_opts = [t("all_pools", lang), t("pool_25m", lang), t("pool_50m", lang)]
+        sel_pool = st.selectbox(t("filter_pool", lang), pool_opts, key="rec_pool")
 
     # Apply filters
     view = results.copy()
@@ -60,6 +63,10 @@ def render(lang: str) -> None:
         view = view[view["discipline"] == sel_disc]
     if sel_year != t("all_years", lang):
         view = view[view["birth_year"] == int(sel_year)]
+    if sel_pool == t("pool_25m", lang):
+        view = view[view["pool"] == "25m"]
+    elif sel_pool == t("pool_50m", lang):
+        view = view[view["pool"] == "50m"]
 
     if view.empty:
         st.info(t("no_results", lang))
@@ -77,8 +84,10 @@ def render(lang: str) -> None:
         event_rows = view[view["event_id"] == event_id]
         event_name = event_rows["event_name"].iloc[0]
         event_date = event_rows["date"].iloc[0]
+        event_pool = event_rows["pool"].iloc[0] if "pool" in event_rows.columns else "50m"
+        pool_badge = t("pool_badge_25m", lang) if event_pool == "25m" else t("pool_badge_50m", lang)
 
-        st.markdown(f"#### 🏊 {event_name} — {event_date}")
+        st.markdown(f"#### 🏊 {event_name} — {event_date} &nbsp; `{pool_badge}`")
 
         # Group by swimmer within this event
         swimmer_ids = event_rows["swimmer_id"].unique().tolist()

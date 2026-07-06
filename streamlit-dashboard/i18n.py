@@ -70,6 +70,14 @@ STRINGS = {
         "no_swimmer_selected":  "Bitte Schwimmer suchen und auswählen.",
         "recent_scraper_run":   "🕐 Letzte Scraper-Ausführung",
         "unknown":              "Unbekannt",
+        # Pool size
+        "filter_pool":          "Bahnlänge",
+        "all_pools":            "Alle Bahnlängen",
+        "pool_25m":             "25m (Kurzbahn)",
+        "pool_50m":             "50m (Langbahn)",
+        "col_pool":             "Bahn",
+        "pool_badge_25m":       "🔵 25m",
+        "pool_badge_50m":       "⚪ 50m",
     },
     "en": {
         # App title & nav
@@ -135,6 +143,14 @@ STRINGS = {
         "no_swimmer_selected":  "Please search for a swimmer and select one.",
         "recent_scraper_run":   "🕐 Last scraper run",
         "unknown":              "Unknown",
+        # Pool size
+        "filter_pool":          "Pool length",
+        "all_pools":            "All pool lengths",
+        "pool_25m":             "25m (Short course)",
+        "pool_50m":             "50m (Long course)",
+        "col_pool":             "Pool",
+        "pool_badge_25m":       "🔵 25m",
+        "pool_badge_50m":       "⚪ 50m",
     }
 }
 

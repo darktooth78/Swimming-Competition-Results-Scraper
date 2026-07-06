@@ -12,7 +12,7 @@ Auth: OAuth refresh token stored in st.secrets["gcp_oauth_token"].
 
 Sheets structure:
   Swimmers:  swimmer_id | name | birth_year | club | first_seen_event_id | last_updated
-  Events:    event_id | event_name | date | location | last_updated | modling_participant_count
+  Events:    event_id | event_name | date | location | last_updated | modling_participant_count | pool
   Results:   event_id | swimmer_id | discipline | time_str | time_sec | fetched_at | source
   Log:       run_at | events_checked | events_new | swimmers_discovered | results_added |
              results_skipped | errors | rescans | duration_sec | notes
@@ -97,13 +97,18 @@ def load_swimmers() -> pd.DataFrame:
 def load_events() -> pd.DataFrame:
     """
     Return the Events tab as a DataFrame.
-    Columns: event_id, event_name, date, location, last_updated, modling_participant_count
+    Columns: event_id, event_name, date, location, last_updated, modling_participant_count, pool
     """
     df = _sheet_to_df("Events")
     if df.empty:
         return df
     df["event_id"] = df["event_id"].astype(str)
     df["date_parsed"] = pd.to_datetime(df["date"], format="%d/%m/%Y", errors="coerce")
+    # Ensure pool column exists (backwards-compatible with sheets that predate v2.3)
+    if "pool" not in df.columns:
+        df["pool"] = "50m"
+    else:
+        df["pool"] = df["pool"].fillna("50m").replace("", "50m")
     return df
 
 
@@ -122,8 +127,8 @@ def load_results() -> pd.DataFrame:
     df["swimmer_id"] = df["swimmer_id"].astype(str)
     df["time_sec"]   = pd.to_numeric(df["time_sec"], errors="coerce")
 
-    # Join event metadata
-    events = load_events()[["event_id", "event_name", "date", "location", "date_parsed"]]
+    # Join event metadata (including pool size)
+    events = load_events()[["event_id", "event_name", "date", "location", "date_parsed", "pool"]]
     df = df.merge(events, on="event_id", how="left")
 
     # Join swimmer metadata

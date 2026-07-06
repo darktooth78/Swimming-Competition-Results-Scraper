@@ -62,6 +62,12 @@ const MEETNAME2_PATTERN        = /class="[^"]*myresults_meetname2[^"]*"[^>]*>\s*
 // Fallback: nav3a paragraph
 const NAV3A_PATTERN            = /class="[^"]*myresults_nav3a[^"]*"[^>]*>.*?<p[^>]*>([^<]+)<\/p>/s;
 
+// Pool size: "25m (SCM) ..." or "50m (LCM) ..." before the "Bad" span on the Overview page
+const POOL_SIZE_PATTERN        = /(\d+m)\s*\([^)]+\)[^<]*<span[^>]*myresults_content_divtable_details[^>]*>Bad</i;
+
+// Overview URL template
+const OVERVIEW_URL_TEMPLATE    = 'https://myresults.eu/de-AT/Meets/Recent/{event}/Overview';
+
 // Recent page: event link + date
 // Matches: /Recent/{id}/Overview + event name + date cell
 const RECENT_EVENT_PATTERN     = /\/Recent\/(\d+)\/Overview"[^>]*>([^<]+)<[^]*?hidden-xs col-sm-2">([^<]+)</g;
@@ -352,6 +358,29 @@ function cleanText(text) {
 
 
 // ---------------------------------------------------------------------------
+// Pool size
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetch the event Overview page and return "25m" or "50m".
+ * The "Bad" field contains text like "25m (SCM) Hallenbad" or "50m (LCM) Freibad".
+ * Defaults to "50m" when the page cannot be fetched or the field is absent.
+ * Ported from Python parse_pool_size_from_overview().
+ *
+ * @param {number|string} eventId
+ * @param {{max_retries: number, retry_delays: number[]}} cfg
+ * @returns {string}  "25m" or "50m"
+ */
+function parsePoolSize(eventId, cfg) {
+  const url  = OVERVIEW_URL_TEMPLATE.replace('{event}', eventId);
+  const html = fetchHtml(url, cfg);
+  if (!html) return '50m';
+  const m = POOL_SIZE_PATTERN.exec(html);
+  return m ? m[1].toLowerCase() : '50m';
+}
+
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -418,4 +447,16 @@ function testParser() {
     }
   }
   Logger.log('testParser: PASS');
+}
+
+
+function testParsePoolSize() {
+  const cfg   = readConfig();
+  const pool25 = parsePoolSize(2248, cfg);
+  const pool50 = parsePoolSize(2341, cfg);
+  Logger.log('testParsePoolSize: event 2248 → ' + pool25 + ' (expected 25m)');
+  Logger.log('testParsePoolSize: event 2341 → ' + pool50 + ' (expected 50m)');
+  if (pool25 !== '25m') { Logger.log('testParsePoolSize: FAIL — expected 25m'); return; }
+  if (pool50 !== '50m') { Logger.log('testParsePoolSize: FAIL — expected 50m'); return; }
+  Logger.log('testParsePoolSize: PASS');
 }
