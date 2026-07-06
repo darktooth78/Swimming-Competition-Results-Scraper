@@ -218,14 +218,34 @@ print('✅ OK')
 
 ```
 MyResult/
-├── timescraper_010.py   # Main application (v2.2.0)
-├── config.json          # Runtime configuration
-├── README.md            # This file
-├── AGENTS.md            # AI agent rules
-├── venv/                # Python virtual environment
-├── docs/                # Extra documentation
-└── .bob/                # Bob AI assistant config
+├── timescraper_010.py        # Main scraper application (v2.2.0)
+├── config.json               # Runtime configuration
+├── README.md                 # This file
+├── AGENTS.md                 # AI agent rules
+├── streamlit-dashboard/      # Streamlit web dashboard (see below)
+│   ├── app.py                # Entry point
+│   ├── data.py               # Google Sheets data loaders
+│   ├── i18n.py               # DE/EN translations
+│   └── views/                # One module per view
+│       ├── swimmer.py        # Swimmer profile + insights
+│       ├── team_overview.py  # Team overview
+│       ├── leaderboard.py    # Personal bests leaderboard
+│       └── recent.py         # Recent results
+├── gas/                      # Google Apps Script scraper (Sheets automation)
+├── venv/                     # Python virtual environment
+├── docs/                     # Extra documentation
+└── .bob/                     # Bob AI assistant config
 ```
+
+---
+
+## Streamlit Dashboard
+
+Live at: **https://swimming-competition-results-scraper-he6oihvtaox7ftfygiov6t.streamlit.app**
+
+A web dashboard that reads results from Google Sheets and displays them with interactive charts and insights. See [`streamlit-dashboard/README.md`](streamlit-dashboard/README.md) for full details.
+
+> ⚠️ Deployed from the `feature/google-workspace-migration` branch — merge changes there to update the live app.
 
 ---
 
@@ -247,6 +267,13 @@ Check **Debug Mode** in the GUI to enable `logging.DEBUG` output — all fetch U
 ---
 
 ## Version History
+
+### v2.3.0 — July 2026 — Streamlit dashboard swimmer insights
+- **Swimmer profile redesign** — new sections: 4 highlight metric cards, improvement callout banner, recent form cards per discipline, improvement deltas on PB bar chart, trend captions on progress charts
+- **Age group label** — header now shows age group (Mini / Jugend A-B / Junioren / Erwachsene) derived from birth year
+- **Best meet** — metric card showing which competition produced the most personal bests
+- **Green PB bars** — disciplines where the swimmer improved >0.5 s since their first race are highlighted in green
+- **Bilingual** — all new strings added to DE and EN in `i18n.py`
 
 ### v2.2.0 — July 2026 — result data quality & CSV structure
 - **Discipline suffix stripping** — race names like `50m Freistil Kinder` are normalised to `50m Freistil`; age-group labels, heat labels, gender qualifiers after the stroke name are all dropped
