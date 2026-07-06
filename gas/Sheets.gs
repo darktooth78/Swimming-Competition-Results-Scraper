@@ -333,12 +333,12 @@ function appendLog(runAt, eventsChecked, eventsNew, swimmersDiscovered,
  *   Extensions → Apps Script → select backfillPoolSize → Run
  *
  * It respects the GAS 6-minute execution limit: it stops early if within
- * 60 seconds of the limit and logs how many rows remain.
+ * 5 minutes and logs how many rows remain so you can re-run.
  *
  * Safe to re-run: already-populated rows are skipped without a network call.
  */
 function backfillPoolSize() {
-  const MAX_MS   = 300000;   // stop with 1 min buffer (same as main())
+  const MAX_MS   = 300000;   // 5-minute budget (same guard as main())
   const runStart = new Date();
   const cfg      = readConfig();
   const sheet    = getSheet('Events');
@@ -349,7 +349,7 @@ function backfillPoolSize() {
     return;
   }
 
-  // Read all 7 columns (A–G) in one batch read
+  // Read all 7 columns (A–G) in one batch
   const values = sheet.getRange(2, 1, lastRow - 1, 7).getValues();
 
   let filled   = 0;
@@ -358,10 +358,10 @@ function backfillPoolSize() {
   let deferred = 0;
 
   for (let i = 0; i < values.length; i++) {
-    // Time-budget guard — stop with ~1 min to spare
+    // Time-budget guard
     if ((new Date() - runStart) > MAX_MS) {
       deferred = values.length - i;
-      Logger.log(`backfillPoolSize: time budget reached — ${deferred} rows deferred. Re-run to continue.`);
+      Logger.log('backfillPoolSize: time budget reached — ' + deferred + ' rows deferred. Re-run to continue.');
       break;
     }
 
@@ -369,19 +369,19 @@ function backfillPoolSize() {
     const eventId = row[0];
     const pool    = String(row[6] || '').trim();
 
-    // Skip rows that already have a valid pool value
+    // Already filled — skip without any network call
     if (pool === '25m' || pool === '50m') {
       skipped++;
       continue;
     }
 
-    // Skip rows with no event ID
+    // No event ID — skip
     if (!eventId) {
       skipped++;
       continue;
     }
 
-    // Synthetic CSV event IDs have no Overview page — default to 50m
+    // Synthetic CSV event IDs (csv_xxxxxx) have no Overview page — default to 50m
     if (String(eventId).startsWith('csv_')) {
       sheet.getRange(i + 2, 7).setValue('50m');
       filled++;
@@ -392,17 +392,22 @@ function backfillPoolSize() {
       const poolSize = parsePoolSize(eventId, cfg);
       sheet.getRange(i + 2, 7).setValue(poolSize);
       filled++;
-      Logger.log(`backfillPoolSize: event ${eventId} → ${poolSize}`);
+      Logger.log('backfillPoolSize: event ' + eventId + ' → ' + poolSize);
     } catch (e) {
       errors++;
-      Logger.log(`backfillPoolSize: ERROR for event ${eventId}: ${e}`);
+      Logger.log('backfillPoolSize: ERROR for event ' + eventId + ': ' + e);
     }
   }
 
   Logger.log(
-    `backfillPoolSize: done — filled=${filled}, skipped=${skipped}, errors=${errors}, deferred=${deferred}`
+    'backfillPoolSize: done — filled=' + filled +
+    ', skipped=' + skipped +
+    ', errors=' + errors +
+    ', deferred=' + deferred
   );
 }
+
+
 
 
 // ---------------------------------------------------------------------------
