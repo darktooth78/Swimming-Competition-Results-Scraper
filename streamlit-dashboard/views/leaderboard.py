@@ -51,7 +51,7 @@ def render(lang: str) -> None:
     birth_years  = sorted(pb_df["birth_year"].dropna().unique().astype(int).tolist())
     competitions = sorted(pb_df["event_name"].dropna().unique().tolist())
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     with col1:
         sel_year = st.selectbox(
             t("filter_birth_year", lang),
@@ -65,6 +65,9 @@ def render(lang: str) -> None:
             key="lb_comp",
         )
     with col3:
+        pool_opts = [t("all_pools", lang), t("pool_25m", lang), t("pool_50m", lang)]
+        sel_pool = st.selectbox(t("filter_pool", lang), pool_opts, key="lb_pool")
+    with col4:
         dates = pb_df["date_parsed"].dropna()
         min_d = dates.min().date() if not dates.empty else None
         max_d = dates.max().date() if not dates.empty else None
@@ -84,6 +87,10 @@ def render(lang: str) -> None:
         filtered = filtered[filtered["birth_year"] == int(sel_year)]
     if sel_comp != t("all_competitions", lang):
         filtered = filtered[filtered["event_name"] == sel_comp]
+    if sel_pool == t("pool_25m", lang):
+        filtered = filtered[filtered["pool"] == "25m"]
+    elif sel_pool == t("pool_50m", lang):
+        filtered = filtered[filtered["pool"] == "50m"]
     if sel_range and len(sel_range) == 2:
         s, e = pd.Timestamp(sel_range[0]), pd.Timestamp(sel_range[1])
         filtered = filtered[(filtered["date_parsed"] >= s) & (filtered["date_parsed"] <= e)]

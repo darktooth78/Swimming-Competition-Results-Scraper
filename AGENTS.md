@@ -62,9 +62,18 @@ process_single_event()
 - This maps `"50m Freistil Kinder"` and `"50m Freistil Jugend"` to the same key `"50m Freistil"`
 - The "keep fastest" logic in `parse_results_from_html` then automatically picks the best time
 
+### Pool Size Detection
+- `parse_pool_size_from_overview(event_id)` fetches `https://myresults.eu/de-AT/Meets/Recent/{event}/Overview`
+- Parses the **"Bad"** field: text like `"25m (SCM) Hallenbad"` or `"50m (LCM) Freibad"`
+- `POOL_SIZE_PATTERN` matches the leading `\d+m` token before the `<span …>Bad<` label
+- Returns `"25m"` or `"50m"` (lowercase); defaults to `"50m"` if the page or field is missing
+- Result is cached in `event_metadata_cache[event_id]["pool"]` — only one Overview fetch per event across all threads
+- Called from `process_single_event()` after metadata is resolved; stored as `meta["pool"]`
+
 ### CSV Thread Safety
 - **ALWAYS** acquire `csv_lock` before reading or writing the CSV
 - File is **always** fully re-written on every save (never appended to)
+- Static columns (8): `Date`, `Event Name`, `Location`, `ID`, `Name`, `Year`, `Club`, **`Pool`**
 - Discipline columns are re-sorted on every write: Freistil → Brust → Schmetterling → Rücken → Lagen → other; distance ascending within each stroke (`_sort_discipline_columns`)
 - All existing rows are rebuilt via header→value map to track column reordering correctly
 - Data rows are sorted by date descending (`_sort_key_date_desc`) before writing
@@ -82,6 +91,7 @@ process_single_event()
 **Verified test data**:
 - Event: `2341`, Participant: `306991`
 - Expected: event = `"53. Internationales Swimcity Wels Meeting"`, name = `"BLOBNER Vincent"`, 6 result disciplines
+- Event `2248` → pool `"25m"` (SCM); Event `2341` → pool `"50m"` (LCM)
 
 **Syntax check**:
 ```bash
@@ -106,6 +116,9 @@ for k in results:
 cols = list(results.keys())
 sorted_cols = s._sort_discipline_columns(cols)
 assert cols == sorted_cols or True  # order only guaranteed after save_to_csv
+# Pool size detection
+assert s.parse_pool_size_from_overview(2248) == '25m'
+assert s.parse_pool_size_from_overview(2341) == '50m'
 print('OK')
 "
 ```

@@ -316,7 +316,7 @@ def render(lang: str) -> None:
     # ══════════════════════════════════════════════════════════════════════
     competitions = sorted(swimmer_results["event_name"].dropna().unique().tolist())
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     with col1:
         sel_disc = st.selectbox(
             t("filter_discipline", lang),
@@ -330,6 +330,9 @@ def render(lang: str) -> None:
             key="sw_comp",
         )
     with col3:
+        pool_opts = [t("all_pools", lang), t("pool_25m", lang), t("pool_50m", lang)]
+        sel_pool = st.selectbox(t("filter_pool", lang), pool_opts, key="sw_pool")
+    with col4:
         dates = swimmer_results["date_parsed"].dropna()
         min_d = dates.min().date() if not dates.empty else None
         max_d = dates.max().date() if not dates.empty else None
@@ -348,6 +351,10 @@ def render(lang: str) -> None:
         view = view[view["discipline"] == sel_disc]
     if sel_comp != t("all_competitions", lang):
         view = view[view["event_name"] == sel_comp]
+    if sel_pool == t("pool_25m", lang):
+        view = view[view["pool"] == "25m"]
+    elif sel_pool == t("pool_50m", lang):
+        view = view[view["pool"] == "50m"]
     if sel_range and len(sel_range) == 2:
         s, e = pd.Timestamp(sel_range[0]), pd.Timestamp(sel_range[1])
         view = view[(view["date_parsed"] >= s) & (view["date_parsed"] <= e)]
@@ -377,8 +384,20 @@ def render(lang: str) -> None:
 
             disc_data["time_fmt"]   = disc_data["time_sec"].apply(_fmt_time)
             disc_data["hover_text"] = disc_data.apply(
-                lambda r: f"<b>{r['time_fmt']}</b><br>{r.get('event_name','')}<br>{r.get('date','')}",
+                lambda r: (
+                    f"<b>{r['time_fmt']}</b><br>"
+                    f"{r.get('event_name','')}<br>"
+                    f"{r.get('date','')}<br>"
+                    f"{t('pool_badge_25m', lang) if r.get('pool') == '25m' else t('pool_badge_50m', lang)}"
+                ),
                 axis=1,
+            )
+            # Diamond markers for 25m (SCM) results to distinguish from 50m (LCM)
+            disc_data["marker_symbol"] = disc_data["pool"].apply(
+                lambda p: "diamond" if p == "25m" else "circle"
+            )
+            disc_data["marker_color"] = disc_data["pool"].apply(
+                lambda p: "#3b82d4" if p != "25m" else "#7c5cd8"
             )
 
             pb_sec  = disc_data["time_sec"].min()
@@ -431,15 +450,31 @@ def render(lang: str) -> None:
             )
 
             # ── Main scatter + line ───────────────────────────────────────
+            # Connecting line uses the default blue; individual markers are
+            # coloured/shaped per pool size (circle=50m blue, diamond=25m purple)
             fig.add_trace(go.Scatter(
                 x             = disc_data["date_parsed"],
                 y             = disc_data["time_sec"],
-                mode          = "lines+markers",
+                mode          = "lines",
                 name          = disc,
                 line          = dict(color="#3b82d4", width=2),
-                marker        = dict(size=9, color="#3b82d4"),
+                hoverinfo     = "skip",
+                showlegend    = False,
+            ))
+            fig.add_trace(go.Scatter(
+                x             = disc_data["date_parsed"],
+                y             = disc_data["time_sec"],
+                mode          = "markers",
+                name          = disc,
+                marker        = dict(
+                    size   = 10,
+                    symbol = disc_data["marker_symbol"].tolist(),
+                    color  = disc_data["marker_color"].tolist(),
+                    line   = dict(color="#ffffff", width=1),
+                ),
                 text          = disc_data["hover_text"],
                 hovertemplate = "%{text}<extra></extra>",
+                showlegend    = False,
             ))
 
             # ── PB marker (gold star) ─────────────────────────────────────
@@ -482,13 +517,16 @@ def render(lang: str) -> None:
             st.plotly_chart(fig, use_container_width=True)
 
             # ── Results table ──────────────────────────────────────────────
-            table = disc_data[["date", "event_name", "location", "time_fmt", "is_pb"]].copy()
+            table = disc_data[["date", "event_name", "location", "pool", "time_fmt", "is_pb"]].copy()
             table["time_fmt"] = table.apply(
                 lambda r: r["time_fmt"] + " 🏅" if r["is_pb"] else r["time_fmt"], axis=1
+            )
+            table["pool"] = table["pool"].apply(
+                lambda p: t("pool_badge_25m", lang) if p == "25m" else t("pool_badge_50m", lang)
             )
             table = table.drop(columns=["is_pb"])
             table.columns = [
                 t("col_date", lang), t("col_competition", lang),
-                t("col_location", lang), t("col_time", lang),
+                t("col_location", lang), t("col_pool", lang), t("col_time", lang),
             ]
             st.dataframe(table, use_container_width=True, hide_index=True)

@@ -16,6 +16,9 @@ const RECENT_PAGE_URL          = 'https://myresults.eu/de-AT/Meets/Recent';
 const CLUB_PAGE_URL_TEMPLATE   = 'https://myresults.eu/de-AT/Meets/Recent/{event}/Club/{club}';
 const PARTICIPANT_URL_TEMPLATE = 'https://myresults.eu/de-AT/Meets/Recent/{event}/Participant/{participant}';
 
+// Pool size is fetched once per event from the Overview page (see parsePoolSize in Parser.gs)
+// and stored in column G of the Events sheet and in eventsCache[eid].pool.
+
 
 // ---------------------------------------------------------------------------
 // main() — nightly pipeline
@@ -118,15 +121,16 @@ function main() {
           errors++;
           upsertEvent(eid, eventMeta.event_name || 'Unknown', eventMeta.date || 'Unknown', null, 0);
           eventsNew++;
-          eventsCache[String(eid)] = { event_name: eventMeta.event_name || 'Unknown', date: eventMeta.date || 'Unknown', location: '' };
+          eventsCache[String(eid)] = { event_name: eventMeta.event_name || 'Unknown', date: eventMeta.date || 'Unknown', location: '', pool: '50m' };
           eventParticipants[eid] = [];
           continue;
         }
 
         const participants = parseClubPage(clubHtml);
-        upsertEvent(eid, eventMeta.event_name || 'Unknown', eventMeta.date || 'Unknown', null, participants.length);
+        const poolSize = parsePoolSize(eid, cfg);
+        upsertEvent(eid, eventMeta.event_name || 'Unknown', eventMeta.date || 'Unknown', null, participants.length, poolSize);
         eventsNew++;
-        eventsCache[String(eid)] = { event_name: eventMeta.event_name || 'Unknown', date: eventMeta.date || 'Unknown', location: '' };
+        eventsCache[String(eid)] = { event_name: eventMeta.event_name || 'Unknown', date: eventMeta.date || 'Unknown', location: '', pool: poolSize };
         eventParticipants[eid] = participants.map(p => String(p.participant_id));
 
         // Add any newly discovered swimmers in one pass (no per-participant Sheets read)
@@ -216,12 +220,16 @@ function main() {
       const swimmer = parseParticipant(html);
       if (swimmer.name === 'Unknown' && swimmer.club === 'Unknown') continue;
 
-      // Enrich metadata if not yet in cache
-      if (!eventsCache[String(task.event_id)] || eventsCache[String(task.event_id)].location === '') {
-        const meta = parseMetadata(html, task.event_id);
-        upsertEvent(task.event_id, meta.event, meta.date, meta.location, null);
-        if (eventsCache[String(task.event_id)]) {
-          eventsCache[String(task.event_id)].location = meta.location;
+      // Enrich metadata (location + pool) if not yet fully resolved
+      const eidStr  = String(task.event_id);
+      const cached  = eventsCache[eidStr];
+      if (!cached || cached.location === '' || !cached.pool) {
+        const meta     = parseMetadata(html, task.event_id);
+        const poolSize = (cached && cached.pool) ? cached.pool : parsePoolSize(task.event_id, cfg);
+        upsertEvent(task.event_id, meta.event, meta.date, meta.location, null, poolSize);
+        if (eventsCache[eidStr]) {
+          eventsCache[eidStr].location = meta.location;
+          eventsCache[eidStr].pool     = poolSize;
         }
       }
 

@@ -18,6 +18,7 @@ Features:
 - CSV rows sorted by date descending (newest event first)
 - Discipline columns sorted by stroke order (Freistil → Brust → Schmetterling → Rücken → Lagen)
   and by distance ascending within each stroke (25m, 50m, 100m, …)
+- Pool size (25m / 50m) extracted from the event Overview page and stored as a CSV column
 
 Architecture note:
   myresults.eu pages are fully server-side rendered — all data is present in the
@@ -25,7 +26,7 @@ Architecture note:
   A simple requests.get() + regex parse is 20-30x faster than Selenium.
 
 Author: Swimming Results Team
-Version: 2.2.0
+Version: 2.3.0
 """
 
 import re
@@ -208,6 +209,14 @@ NAV3A_PATTERN = re.compile(
     r'class="[^"]*myresults_nav3a[^"]*"[^>]*>.*?<p[^>]*>([^<]+)</p>',
     re.DOTALL
 )
+# Pool size: matches "25m (SCM) ..." or "50m (LCM) ..." before the "Bad" label
+# The value lives in the col-xs-12 cell whose sibling span text is "Bad"
+POOL_SIZE_PATTERN = re.compile(
+    r'(\d+m)\s*\([^)]+\)[^<]*<span[^>]*myresults_content_divtable_details[^>]*>Bad<',
+    re.IGNORECASE
+)
+# Overview URL template (separate from participant URL)
+MYRESULTS_OVERVIEW_URL_TEMPLATE = "https://myresults.eu/de-AT/Meets/Recent/{event}/Overview"
 
 # ==============================
 # 🔧 GLOBAL STATE
@@ -441,6 +450,35 @@ def parse_metadata_from_html(html: str, event_id: int) -> Dict[str, str]:
     return metadata
 
 
+def parse_pool_size_from_overview(event_id: int) -> str:
+    """
+    Fetch the event Overview page and extract the pool size (25m or 50m).
+
+    The "Bad" field on the Overview page contains text like "25m (SCM) Hallenbad"
+    or "50m (LCM) Freibad".  We return the leading distance token ("25m" or "50m").
+    Falls back to "50m" when the page cannot be fetched or the field is absent.
+    """
+    with metadata_cache_lock:
+        cached = event_metadata_cache.get(event_id)
+    if cached and "pool" in cached:
+        return cached["pool"]
+
+    url = MYRESULTS_OVERVIEW_URL_TEMPLATE.format(event=event_id)
+    html = fetch_html(url)
+    pool = "50m"  # safe default
+    if html:
+        m = POOL_SIZE_PATTERN.search(html)
+        if m:
+            pool = m.group(1).lower()  # "25m" or "50m"
+
+    with metadata_cache_lock:
+        if event_id not in event_metadata_cache:
+            event_metadata_cache[event_id] = {}
+        event_metadata_cache[event_id]["pool"] = pool
+
+    return pool
+
+
 def parse_participant_from_html(html: str) -> Tuple[str, str, str]:
     """
     Extract participant name, birth year, and club from page HTML.
@@ -565,7 +603,7 @@ def _sort_key_date_desc(row: list) -> tuple:
 def save_to_csv(meta_data: dict, results: dict, log_func, full_path: str) -> None:
     """Speichert Daten Thread-Sicher in die CSV Datei."""
     with csv_lock:
-        static_headers = ["Date", "Event Name", "Location", "ID", "Name", "Year", "Club"]
+        static_headers = ["Date", "Event Name", "Location", "ID", "Name", "Year", "Club", "Pool"]
         file_exists = os.path.isfile(full_path)
         current_headers = []
         existing_rows = []
@@ -594,7 +632,7 @@ def save_to_csv(meta_data: dict, results: dict, log_func, full_path: str) -> Non
         new_disciplines = [d for d in results.keys() if d not in current_headers]
 
         try:
-            static_count = 7  # Date, Event Name, Location, ID, Name, Year, Club
+            static_count = 8  # Date, Event Name, Location, ID, Name, Year, Club, Pool
             if new_disciplines:
                 log_func(f"   ✨ Neue Spalten: {new_disciplines}")
                 current_headers.extend(new_disciplines)
@@ -615,7 +653,8 @@ def save_to_csv(meta_data: dict, results: dict, log_func, full_path: str) -> Non
             # Build new row using the final ordered headers
             new_row = [
                 meta_data["date"], meta_data["event"], meta_data["location"],
-                meta_data["id"], meta_data["name"], meta_data["year"], meta_data["club"]
+                meta_data["id"], meta_data["name"], meta_data["year"], meta_data["club"],
+                meta_data.get("pool", "50m")
             ]
             for header in ordered_headers[static_count:]:
                 new_row.append(results.get(header, ""))
@@ -690,6 +729,10 @@ def process_single_event(event_number: int, current_id: str, log_func, full_path
             meta = dict(cached)
         else:
             meta = parse_metadata_from_html(html, event_number)
+
+        # --- Pool size (25m / 50m) from Overview page, with per-event caching ---
+        if "pool" not in meta:
+            meta["pool"] = parse_pool_size_from_overview(event_number)
 
         meta["id"] = current_id
         meta["name"] = p_name
@@ -831,7 +874,7 @@ class ScraperApp(ctk.CTk):
         self.verbose_mode.pack(side="left")
 
         ctk.CTkLabel(
-            self.frm_settings, text="v2.2.0", font=("Roboto", 10), text_color="#445566"
+            self.frm_settings, text="v2.3.0", font=("Roboto", 10), text_color="#445566"
         ).pack(side="right")
 
         self.print_log("Bereit.  Bitte IDs und Event-Bereich eingeben, dann START drücken.")
