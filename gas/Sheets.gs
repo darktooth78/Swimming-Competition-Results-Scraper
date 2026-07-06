@@ -319,6 +319,98 @@ function appendLog(runAt, eventsChecked, eventsNew, swimmersDiscovered,
 
 
 // ---------------------------------------------------------------------------
+// Backfill
+// ---------------------------------------------------------------------------
+
+/**
+ * backfillPoolSize()
+ * ==================
+ * One-shot function: reads every row in the Events sheet, fetches the pool
+ * size from the /Overview page for any row where column G (pool) is blank or
+ * missing, and writes it back.
+ *
+ * Run ONCE manually from the Apps Script editor:
+ *   Extensions → Apps Script → select backfillPoolSize → Run
+ *
+ * It respects the GAS 6-minute execution limit: it stops early if within
+ * 5 minutes and logs how many rows remain so you can re-run.
+ *
+ * Safe to re-run: already-populated rows are skipped without a network call.
+ */
+function backfillPoolSize() {
+  const MAX_MS   = 300000;   // 5-minute budget (same guard as main())
+  const runStart = new Date();
+  const cfg      = readConfig();
+  const sheet    = getSheet('Events');
+  const lastRow  = sheet.getLastRow();
+
+  if (lastRow < 2) {
+    Logger.log('backfillPoolSize: Events sheet is empty — nothing to do');
+    return;
+  }
+
+  // Read all 7 columns (A–G) in one batch
+  const values = sheet.getRange(2, 1, lastRow - 1, 7).getValues();
+
+  let filled   = 0;
+  let skipped  = 0;
+  let errors   = 0;
+  let deferred = 0;
+
+  for (let i = 0; i < values.length; i++) {
+    // Time-budget guard
+    if ((new Date() - runStart) > MAX_MS) {
+      deferred = values.length - i;
+      Logger.log('backfillPoolSize: time budget reached — ' + deferred + ' rows deferred. Re-run to continue.');
+      break;
+    }
+
+    const row     = values[i];
+    const eventId = row[0];
+    const pool    = String(row[6] || '').trim();
+
+    // Already filled — skip without any network call
+    if (pool === '25m' || pool === '50m') {
+      skipped++;
+      continue;
+    }
+
+    // No event ID — skip
+    if (!eventId) {
+      skipped++;
+      continue;
+    }
+
+    // Synthetic CSV event IDs (csv_xxxxxx) have no Overview page — default to 50m
+    if (String(eventId).startsWith('csv_')) {
+      sheet.getRange(i + 2, 7).setValue('50m');
+      filled++;
+      continue;
+    }
+
+    try {
+      const poolSize = parsePoolSize(eventId, cfg);
+      sheet.getRange(i + 2, 7).setValue(poolSize);
+      filled++;
+      Logger.log('backfillPoolSize: event ' + eventId + ' → ' + poolSize);
+    } catch (e) {
+      errors++;
+      Logger.log('backfillPoolSize: ERROR for event ' + eventId + ': ' + e);
+    }
+  }
+
+  Logger.log(
+    'backfillPoolSize: done — filled=' + filled +
+    ', skipped=' + skipped +
+    ', errors=' + errors +
+    ', deferred=' + deferred
+  );
+}
+
+
+
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
