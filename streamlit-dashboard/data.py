@@ -162,21 +162,26 @@ def load_medals() -> pd.DataFrame:
     if df.empty:
         return df
 
+    # Normalise place column — Sheets may store "1." as integer 1, float 1.0, or string "1."
+    df["place"] = df["place"].astype(str).str.strip().str.replace(r'\.0$', '.', regex=True)
+    # Ensure "1" → "1.", "2" → "2.", "3" → "3."
+    df["place"] = df["place"].str.replace(r'^(\d+)$', r'\1.', regex=True)
+
     medal_mask = (
         df["medal"].isin(["Gold", "Silber", "Silver", "Bronze"])
         | df["place"].isin(["1.", "2.", "3."])
     )
     medals = df[medal_mask].copy().reset_index(drop=True)
 
-    # Normalise medal labels so Gold/Silber/Bronze is always set
+    # Normalise medal labels — derive from place when medal column is empty
     def _derive_medal(row):
         if row["medal"] in ("Gold", "Silber", "Silver", "Bronze"):
             return row["medal"]
-        if row["place"] == "1.":
+        if row["place"] in ("1", "1."):
             return "Gold"
-        if row["place"] == "2.":
+        if row["place"] in ("2", "2."):
             return "Silber"
-        if row["place"] == "3.":
+        if row["place"] in ("3", "3."):
             return "Bronze"
         return row["medal"]
 

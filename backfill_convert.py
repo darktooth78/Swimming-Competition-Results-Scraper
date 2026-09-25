@@ -184,13 +184,23 @@ def main():
                 'club':       'SU MöDLING',
                 'times':      {},    # disc_key → time_sec (fastest)
                 'times_str':  {},    # disc_key → time_str
+                'place':      {},    # disc_key → place string (e.g. '1.')
+                'medal':      {},    # disc_key → medal string (e.g. 'Gold')
+                'age_group':  {},    # disc_key → age group string
             }
 
         ae = athlete_events[key]
+        place     = row.get('Platzierung', '').strip()
+        medal     = row.get('Medaille', '').strip()
+        age_group = row.get('Altersklasse', '').strip()
+
         sec = time_to_sec(time_str)
         if disc_key not in ae['times'] or sec < ae['times'][disc_key]:
             ae['times'][disc_key]     = sec
             ae['times_str'][disc_key] = time_str
+            ae['place'][disc_key]     = place
+            ae['medal'][disc_key]     = medal
+            ae['age_group'][disc_key] = age_group
 
     print(f"  → skipped: {skipped_relay} relays, {skipped_time} invalid times, {skipped_noname} missing IDs")
     print(f"  → {len(athlete_events)} athlete×event combinations")
