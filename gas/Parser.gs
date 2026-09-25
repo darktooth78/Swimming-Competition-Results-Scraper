@@ -20,6 +20,12 @@
 // Relay detection
 const RELAY_PATTERN            = /4x/i;
 
+// Placement badge: <span class="msecm-place…">1.</span>
+const PLACE_PATTERN            = /<span[^>]*class="msecm-place[^"]*"[^>]*>([^<]+)<\/span>/;
+
+// Age group / Altersklasse detail
+const AGE_GROUP_PATTERN        = /<span[^>]*class="myresults_content_divtable_details_black"[^>]*>([^<]+)<\/span>/;
+
 // Discipline normalisation strip patterns
 const PREFIX_PATTERN           = /^\d+\s*-\s*/;
 const GENDER_PATTERN           = /\b(Men|Women|Mixed|Herren|Damen)\b/gi;
@@ -290,13 +296,18 @@ function parseParticipant(html) {
 
 /**
  * Extract all swimming results from a participant page HTML.
- * Returns {disciplineName: {str: string, sec: number}} — fastest per discipline.
+ * Returns {disciplineName: {str, sec, place, medal, age_group}} — fastest per discipline.
  * Relays (4x…) are excluded.
  * Ported from Python parse_results_from_html() lines 460–513.
  *
+ * New fields added (non-breaking — callers that only use {str, sec} continue to work):
+ *   place     – e.g. "1.", "2.", "3." or ""
+ *   medal     – "Gold", "Silber", "Bronze" or ""
+ *   age_group – e.g. "AK16", "Jahrgang 2014", "Open" or ""
+ *
  * @param {string} html
  * @param {{translations: {[eng: string]: string}}} cfg
- * @returns {{[discipline: string]: {str: string, sec: number}}}
+ * @returns {{[discipline: string]: {str: string, sec: number, place: string, medal: string, age_group: string}}}
  */
 function parseResults(html, cfg) {
   const results = {};
@@ -330,9 +341,21 @@ function parseResults(html, cfg) {
 
     if (!validateTimeFormat(timeStr)) continue;
 
+    // Extract placement, medal, age group
+    const placeM    = PLACE_PATTERN.exec(chunk);
+    const place     = placeM ? placeM[1].trim() : '';
+
+    let medal = '';
+    if (chunk.includes('msecm-place-gold')   || place === '1.') medal = 'Gold';
+    else if (chunk.includes('msecm-place-silver') || place === '2.') medal = 'Silber';
+    else if (chunk.includes('msecm-place-bronze') || place === '3.') medal = 'Bronze';
+
+    const ageGroupM = AGE_GROUP_PATTERN.exec(chunk);
+    const age_group = ageGroupM ? ageGroupM[1].trim() : '';
+
     const sec = timeToSeconds(timeStr);
     if (!(discClean in results) || sec < results[discClean].sec) {
-      results[discClean] = { str: timeStr, sec };
+      results[discClean] = { str: timeStr, sec, place, medal, age_group };
     }
   }
 
@@ -444,6 +467,11 @@ function testParser() {
   for (const k of discKeys) {
     if (k.trim().split(/\s+/).length > 2) {
       Logger.log('testParser: FAIL — unexpected suffix in key: ' + k); return;
+    }
+    // Each result entry must have the new fields (may be empty string, but must exist)
+    const entry = results[k];
+    if (!('place' in entry) || !('medal' in entry) || !('age_group' in entry)) {
+      Logger.log('testParser: FAIL — missing place/medal/age_group in: ' + k); return;
     }
   }
   Logger.log('testParser: PASS');

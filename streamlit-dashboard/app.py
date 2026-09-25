@@ -6,7 +6,7 @@ Main Streamlit entry point.
 Layout:
   • Top bar: app title + DE/EN language toggle + last scraper run timestamp
   • Sidebar navigation with two sections
-  • View router dispatches to the four view modules
+  • View router dispatches to the five view modules
 """
 
 import streamlit as st
@@ -24,6 +24,7 @@ import views.swimmer       as view_swimmer
 import views.team_overview as view_team
 import views.leaderboard   as view_leaderboard
 import views.recent        as view_recent
+import views.medals        as view_medals
 
 
 # ---------------------------------------------------------------------------
@@ -82,6 +83,7 @@ with st.sidebar:
         ("overview",    "nav_overview"),
         ("leaderboard", "nav_leaderboard"),
         ("recent",      "nav_recent"),
+        ("medals",      "nav_medals"),
     ]:
         is_active = st.session_state["active_view"] == view_key
         if st.button(
@@ -110,3 +112,5 @@ elif active == "leaderboard":
     view_leaderboard.render(lang())
 elif active == "recent":
     view_recent.render(lang())
+elif active == "medals":
+    view_medals.render(lang())

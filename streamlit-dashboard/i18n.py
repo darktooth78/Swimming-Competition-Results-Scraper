@@ -16,6 +16,7 @@ STRINGS = {
         "nav_overview":         "Mannschaftsübersicht",
         "nav_leaderboard":      "Bestzeiten",
         "nav_recent":           "Letzte Ergebnisse",
+        "nav_medals":           "Medaillenspiegel",
 
         # Swimmer search (View 1)
         "hero_title":           "Ergebnisse deines Kindes finden",
@@ -78,6 +79,26 @@ STRINGS = {
         "col_pool":             "Bahn",
         "pool_badge_25m":       "🔵 25m",
         "pool_badge_50m":       "⚪ 50m",
+        # Medals view
+        "medals_title":         "Medaillenspiegel",
+        "medals_kpi_total":     "Gesamt",
+        "medals_kpi_gold":      "🥇 Gold",
+        "medals_kpi_silver":    "🥈 Silber",
+        "medals_kpi_bronze":    "🥉 Bronze",
+        "medals_kpi_athletes":  "Medaillengewinner:innen",
+        "filter_medal_type":    "Medaillentyp",
+        "all_medal_types":      "Alle Medaillen",
+        "medal_gold":           "🥇 Gold",
+        "medal_silver":         "🥈 Silber",
+        "medal_bronze":         "🥉 Bronze",
+        "filter_age_group":     "Altersklasse",
+        "all_age_groups":       "Alle Altersklassen",
+        "col_place":            "Platz",
+        "col_medal":            "Medaille",
+        "col_age_group":        "AK",
+        "col_discipline":       "Bewerb",
+        "export_csv":           "CSV exportieren",
+        "medals_empty":         "Keine Medaillen für die gewählten Filter gefunden.",
     },
     "en": {
         # App title & nav
@@ -89,6 +110,7 @@ STRINGS = {
         "nav_overview":         "Team Overview",
         "nav_leaderboard":      "Personal Bests",
         "nav_recent":           "Recent Results",
+        "nav_medals":           "Medal Table",
 
         # Swimmer search (View 1)
         "hero_title":           "Find your child's results",
@@ -151,6 +173,26 @@ STRINGS = {
         "col_pool":             "Pool",
         "pool_badge_25m":       "🔵 25m",
         "pool_badge_50m":       "⚪ 50m",
+        # Medals view
+        "medals_title":         "Medal Table",
+        "medals_kpi_total":     "Total",
+        "medals_kpi_gold":      "🥇 Gold",
+        "medals_kpi_silver":    "🥈 Silver",
+        "medals_kpi_bronze":    "🥉 Bronze",
+        "medals_kpi_athletes":  "Medal winners",
+        "filter_medal_type":    "Medal type",
+        "all_medal_types":      "All medals",
+        "medal_gold":           "🥇 Gold",
+        "medal_silver":         "🥈 Silver",
+        "medal_bronze":         "🥉 Bronze",
+        "filter_age_group":     "Age group",
+        "all_age_groups":       "All age groups",
+        "col_place":            "Place",
+        "col_medal":            "Medal",
+        "col_age_group":        "AG",
+        "col_discipline":       "Discipline",
+        "export_csv":           "Export CSV",
+        "medals_empty":         "No medals found for the selected filters.",
     }
 }
 

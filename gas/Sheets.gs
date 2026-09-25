@@ -12,7 +12,8 @@
  *   Events:       A=event_id, B=event_name, C=date, D=location,
  *                 E=last_updated, F=modling_participant_count, G=pool
  *   Results:      A=event_id, B=swimmer_id, C=discipline, D=time_str,
- *                 E=time_sec, F=fetched_at, G=source
+ *                 E=time_sec, F=fetched_at, G=source,
+ *                 H=place (optional), I=medal (optional), J=age_group (optional)
  *   Rescan_Queue: A=swimmer_id, B=rescan_start, C=rescan_end,
  *                 D=status, E=submitted_at
  *   Config:       A=key, B=value
@@ -210,9 +211,12 @@ function upsertEvent(id, name, date, location, modlingCount, pool) {
  * Bulk-append result rows to the Results tab.
  * One row per discipline.
  *
+ * Backwards-compatible: callers that pass resultsObj entries without
+ * place/medal/age_group get empty strings for columns H–J.
+ *
  * @param {number|string} eventId
  * @param {number|string} swimmerId
- * @param {{[discipline: string]: {str: string, sec: number}}} resultsObj
+ * @param {{[discipline: string]: {str: string, sec: number, place?: string, medal?: string, age_group?: string}}} resultsObj
  * @param {string} [source="scraper"]
  */
 function appendResults(eventId, swimmerId, resultsObj, source) {
@@ -221,14 +225,15 @@ function appendResults(eventId, swimmerId, resultsObj, source) {
   const src   = source || 'scraper';
   const rows  = [];
 
-  for (const [disc, {str, sec}] of Object.entries(resultsObj)) {
-    rows.push([String(eventId), String(swimmerId), disc, str, sec, now, src]);
+  for (const [disc, entry] of Object.entries(resultsObj)) {
+    const { str, sec, place = '', medal = '', age_group = '' } = entry;
+    rows.push([String(eventId), String(swimmerId), disc, str, sec, now, src, place, medal, age_group]);
   }
 
   if (rows.length === 0) return;
 
   const lastRow = sheet.getLastRow();
-  sheet.getRange(lastRow + 1, 1, rows.length, 7).setValues(rows);
+  sheet.getRange(lastRow + 1, 1, rows.length, 10).setValues(rows);
 }
 
 
@@ -249,7 +254,9 @@ function deleteResults(swimmerId, startEventId, endEventId) {
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) return;
 
-  const values    = sheet.getRange(2, 1, lastRow - 1, 7).getValues();
+  // Read up to 10 columns (A–J) to preserve place/medal/age_group on rewrite
+  const ncols     = Math.min(sheet.getLastColumn(), 10);
+  const values    = sheet.getRange(2, 1, lastRow - 1, ncols).getValues();
   const sidStr    = String(swimmerId);
   const isNumericRange = !isNaN(Number(startEventId)) && !isNaN(Number(endEventId));
 
@@ -266,9 +273,9 @@ function deleteResults(swimmerId, startEventId, endEventId) {
   });
 
   // Clear and rewrite (header is row 1 — untouched)
-  if (lastRow > 1) sheet.getRange(2, 1, lastRow - 1, 7).clearContent();
+  if (lastRow > 1) sheet.getRange(2, 1, lastRow - 1, ncols).clearContent();
   if (filtered.length > 0) {
-    sheet.getRange(2, 1, filtered.length, 7).setValues(filtered);
+    sheet.getRange(2, 1, filtered.length, ncols).setValues(filtered);
   }
 }
 
@@ -422,8 +429,10 @@ function testSheets() {
   const sheet = getSheet('Results');
   const beforeLastRow = sheet.getLastRow();
 
-  // Write one dummy row
-  appendResults('9999', '99999', { '50m Freistil': { str: '27.92', sec: 27.92 } }, 'test');
+  // Write one dummy row — with all 10 columns (including new H–J fields)
+  appendResults('9999', '99999', {
+    '50m Freistil': { str: '27.92', sec: 27.92, place: '1.', medal: 'Gold', age_group: 'AK16' }
+  }, 'test');
 
   const afterLastRow = sheet.getLastRow();
   if (afterLastRow !== beforeLastRow + 1) {
@@ -431,11 +440,15 @@ function testSheets() {
     return;
   }
 
-  // Read it back
-  const row = sheet.getRange(afterLastRow, 1, 1, 7).getValues()[0];
+  // Read it back (10 columns)
+  const row = sheet.getRange(afterLastRow, 1, 1, 10).getValues()[0];
   Logger.log('testSheets: written row: ' + JSON.stringify(row));
   if (String(row[0]) !== '9999' || String(row[1]) !== '99999') {
     Logger.log('testSheets: FAIL — read-back mismatch');
+    return;
+  }
+  if (String(row[7]) !== '1.' || String(row[8]) !== 'Gold' || String(row[9]) !== 'AK16') {
+    Logger.log('testSheets: FAIL — place/medal/age_group mismatch: ' + JSON.stringify(row.slice(7)));
     return;
   }
 
