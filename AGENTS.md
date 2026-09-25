@@ -85,6 +85,17 @@ process_single_event()
 - Checked at the start of `process_single_event()` and inside the retry loop
 - `reset_http_session()` is called concurrently to abort in-flight connections
 
+### Season / Multi-Event & Medal Reports (Club Scraper)
+- Script: `generate_sum_report.py` (and club-level batch logic)
+- **Club-First URL Discovery**: `https://myresults.eu/de-AT/Meets/Recent/{event_id}/Club/{club_id}` (e.g. Club `6614` for SU Mödling)
+- **Placements & Medals**:
+  - Placements are in `<span class="msecm-place...">` (e.g., `1.`, `2.`, `3.`)
+  - Medals can be identified by classes `msecm-place-gold`, `msecm-place-silver`, `msecm-place-bronze` or placement strings `'1.'`, `'2.'`, `'3.'`
+- **Age Categories / Altersklasse**:
+  - Found in `<span class="myresults_content_divtable_details_black">` within result rows (e.g., `Jahrgang 2014`, `Schüler II`, `AK16`, `Junior`, `Open`)
+- **Direct Race Links**:
+  - Participant page results link to specific heats/finals: `https://myresults.eu/de-AT/Meets/Recent/{event_id}/Results/{race_result_id}`
+
 ---
 
 ## Testing
@@ -138,6 +149,43 @@ print('OK')
 - `loadEventsCache()` reads 7 columns and exposes `pool` key; falls back to `"50m"` for blank cells
 - `backfillPoolSize()` in `Sheets.gs` — one-shot backfill for pre-existing rows; skips rows already set; respects 5-min GAS time budget; safe to re-run
 - GAS does **not** auto-sync from GitHub — any new functions must be pasted into the Apps Script editor manually
+
+### Results sheet column layout (v2.4+)
+- Columns A–G: `event_id | swimmer_id | discipline | time_str | time_sec | fetched_at | source`
+- Columns H–J (optional, added in `feature/medaillenspiegel`): `place | medal | age_group`
+- Older rows without H–J are safe — `load_results()` and `load_medals()` fill in empty strings
+- **Header row must include `place`, `medal`, `age_group` in cells H1–J1** (add once manually after pasting the updated GAS code)
+
+### Backfill procedure (Sub-Task 2 — 01/2025–08/2026)
+Run these steps in order to import all 57 events / ~6 000 results into `SwimmingResults_DB`:
+
+```bash
+# Step 1 — Re-scrape with swimmer_id included in the output (~15 min, 25 threads)
+python3 generate_sum_report.py
+# Produces: SUM_Ergebnisse_2025_2026_Alle.csv  (with event_id + swimmer_id columns)
+
+# Step 2 — Convert & chunk for GAS import
+python3 backfill_convert.py
+# Produces: backfill_chunk_01.csv, backfill_chunk_02.csv, … (≤500 rows each)
+# Also prints GAS import instructions.
+```
+
+Then for each `backfill_chunk_XX.csv`:
+1. Open the chunk file in a text editor and **copy all content** (Cmd+A, Cmd+C).
+2. In the Apps Script editor open `Import.gs`.
+3. Add a temporary wrapper at the bottom:
+   ```js
+   function runImportChunk01() {
+     const csv = `<PASTE HERE>`;
+     Logger.log(JSON.stringify(importCsvData(csv)));
+   }
+   ```
+4. Select `runImportChunk01` in the dropdown and click **Run**.
+5. Check the Execution Log for `{ rows_inserted, rows_skipped, errors }`.
+6. Repeat for each remaining chunk.
+
+> **Idempotent**: `importCsvData()` uses the skip-set — re-running a chunk won't create duplicates.
+> **Birth year**: `generate_sum_report.py` doesn't scrape year-of-birth; the `Year` column is left blank and can be backfilled later via the nightly scraper (which reads it from the participant detail page).
 
 ### Streamlit deployment
 - Streamlit Cloud watches the **`feature/google-workspace-migration`** branch, **not** `main`
