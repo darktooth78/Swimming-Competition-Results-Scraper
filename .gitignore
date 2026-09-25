@@ -35,3 +35,14 @@ streamlit-dashboard/.streamlit/secrets.toml
 oauth_client.json
 client_secret_*.json
 streamlit_secret_token.json
+
+# Backfill scratch files (one-time use, not part of the codebase)
+backfill_chunk_*.csv
+backfill_chunk_*.js
+medal_patch_*.csv
+medal_patch_*.js
+patch_medal_columns.js
+add_missing_events.js
+SUM_Ergebnisse_2025_2026_Alle.csv
+SUM_Medaillen_2025_2026.csv
+medaillenspiegel-integration-plan.md
