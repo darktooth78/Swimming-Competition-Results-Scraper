@@ -256,7 +256,7 @@ def main():
     for ci in range(n_chunks):
         chunk = output_rows[ci * CHUNK_SIZE : (ci + 1) * CHUNK_SIZE]
         filename = f"{OUT_PREFIX}_{ci + 1:02d}.csv"
-        with open(filename, 'w', newline='', encoding='utf-8-sig') as f:
+        with open(filename, 'w', newline='', encoding='utf-8') as f:
             writer = csv.writer(f, delimiter=';')
             writer.writerow(output_headers)
             writer.writerows(chunk)
