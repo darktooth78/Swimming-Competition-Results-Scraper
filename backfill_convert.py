@@ -198,6 +198,16 @@ def main():
         if disc_key not in ae['times'] or sec < ae['times'][disc_key]:
             ae['times'][disc_key]     = sec
             ae['times_str'][disc_key] = time_str
+
+        # Always keep the BEST (lowest) place for this discipline across all heats/finals
+        # A final places lower numerically than a heat — we want that regardless of time
+        def _place_num(p):
+            try: return int(re.sub(r'\D', '', p))
+            except: return 9999
+
+        existing_place = ae['place'].get(disc_key, '')
+        if (not existing_place or
+                _place_num(place) < _place_num(existing_place)):
             ae['place'][disc_key]     = place
             ae['medal'][disc_key]     = medal
             ae['age_group'][disc_key] = age_group
