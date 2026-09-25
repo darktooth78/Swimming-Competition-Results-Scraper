@@ -117,7 +117,8 @@ def load_results() -> pd.DataFrame:
     """
     Return the Results tab as a DataFrame, enriched with event and swimmer metadata.
     Columns: event_id, swimmer_id, discipline, time_str, time_sec, fetched_at, source,
-             + event_name, date, location, date_parsed, name, birth_year, club
+             [optional: place, medal, age_group]
+             + event_name, date, location, date_parsed, pool, name, birth_year, club
     """
     df = _sheet_to_df("Results")
     if df.empty:
@@ -126,6 +127,13 @@ def load_results() -> pd.DataFrame:
     df["event_id"]   = df["event_id"].astype(str)
     df["swimmer_id"] = df["swimmer_id"].astype(str)
     df["time_sec"]   = pd.to_numeric(df["time_sec"], errors="coerce")
+
+    # Ensure optional medal columns exist (backwards-compatible with pre-H rows)
+    for col in ("place", "medal", "age_group"):
+        if col not in df.columns:
+            df[col] = ""
+        else:
+            df[col] = df[col].fillna("")
 
     # Join event metadata (including pool size)
     events = load_events()[["event_id", "event_name", "date", "location", "date_parsed", "pool"]]
@@ -136,6 +144,44 @@ def load_results() -> pd.DataFrame:
     df = df.merge(swimmers, on="swimmer_id", how="left")
 
     return df
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def load_medals() -> pd.DataFrame:
+    """
+    Return only medal-winning rows from the Results tab.
+
+    A row qualifies when:
+      • the 'medal' column contains 'Gold', 'Silber'/'Silver', or 'Bronze', OR
+      • the 'place' column is '1.', '2.', or '3.' (fallback for backfilled rows)
+
+    Returns the same columns as load_results(), pre-filtered to medal rows.
+    Rows without a recognised medal value are excluded.
+    """
+    df = load_results()
+    if df.empty:
+        return df
+
+    medal_mask = (
+        df["medal"].isin(["Gold", "Silber", "Silver", "Bronze"])
+        | df["place"].isin(["1.", "2.", "3."])
+    )
+    medals = df[medal_mask].copy().reset_index(drop=True)
+
+    # Normalise medal labels so Gold/Silber/Bronze is always set
+    def _derive_medal(row):
+        if row["medal"] in ("Gold", "Silber", "Silver", "Bronze"):
+            return row["medal"]
+        if row["place"] == "1.":
+            return "Gold"
+        if row["place"] == "2.":
+            return "Silber"
+        if row["place"] == "3.":
+            return "Bronze"
+        return row["medal"]
+
+    medals["medal"] = medals.apply(_derive_medal, axis=1)
+    return medals
 
 
 @st.cache_data(ttl=300, show_spinner=False)
