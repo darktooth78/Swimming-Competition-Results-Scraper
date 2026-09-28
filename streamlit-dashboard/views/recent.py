@@ -91,6 +91,16 @@ def render(lang: str) -> None:
 
         # Group by swimmer within this event
         swimmer_ids = event_rows["swimmer_id"].unique().tolist()
+        _ABBREV_DE = {
+            "Freistil": "FS", "Brust": "BR",
+            "Schmetterling": "SM", "Rücken": "RK", "Lagen": "LA",
+        }
+        _ABBREV_EN = {
+            "Freistil": "FR", "Brust": "BR",
+            "Schmetterling": "FLY", "Rücken": "BK", "Lagen": "IM",
+        }
+        _abbrev = _ABBREV_EN if lang == "en" else _ABBREV_DE
+
         for sid in swimmer_ids:
             sw_rows = event_rows[event_rows["swimmer_id"] == sid]
             name    = sw_rows["name"].iloc[0]
@@ -98,14 +108,12 @@ def render(lang: str) -> None:
             # Build inline time pills for each discipline
             pills = []
             for _, res_row in sw_rows.sort_values("discipline").iterrows():
-                disc_short = (
-                    res_row["discipline"]
-                    .replace("Freistil", "FS")
-                    .replace("Brust",    "BR")
-                    .replace("Schmetterling", "SM")
-                    .replace("Rücken",   "RK")
-                    .replace("Lagen",    "LA")
-                )
+                raw = res_row["discipline"]
+                parts = raw.split(" ", 1)
+                stroke_key = parts[1] if len(parts) > 1 else ""
+                abbr = _abbrev.get(stroke_key, stroke_key[:2].upper())
+                dist = parts[0] if parts else raw
+                disc_short = f"{dist} {abbr}"
                 badge = " 🟢" if res_row["is_pb"] else ""
                 pills.append(f"`{res_row['time_str']} {disc_short}{badge}`")
 

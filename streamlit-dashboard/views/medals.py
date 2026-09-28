@@ -12,7 +12,7 @@ import streamlit as st
 import pandas as pd
 
 from data import load_medals
-from i18n import t
+from i18n import t, format_discipline
 
 
 def render(lang: str) -> None:
@@ -104,8 +104,8 @@ def render(lang: str) -> None:
         valid_dates = df["date_parsed"].dropna()
         min_date = valid_dates.min().date() if not valid_dates.empty else None
         max_date = valid_dates.max().date() if not valid_dates.empty else None
-        date_from = f5.date_input(t("filter_period", lang) + " (von)", value=min_date, min_value=min_date, max_value=max_date)
-        date_to   = f6.date_input(t("filter_period", lang) + " (bis)", value=max_date, min_value=min_date, max_value=max_date)
+        date_from = f5.date_input(t("filter_date_from", lang), value=min_date, min_value=min_date, max_value=max_date)
+        date_to   = f6.date_input(t("filter_date_to",   lang), value=max_date, min_value=min_date, max_value=max_date)
 
     # ------------------------------------------------------------------
     # Apply filters
@@ -153,6 +153,12 @@ def render(lang: str) -> None:
         "medal":      t("col_medal",      lang),
         "age_group":  t("col_age_group",  lang),
     }
+    # Translate discipline for display (EN only; internal values unchanged)
+    if "discipline" in filtered.columns:
+        filtered = filtered.copy()
+        filtered["discipline"] = filtered["discipline"].apply(
+            lambda d: format_discipline(d, lang) if isinstance(d, str) else d
+        )
     # Keep only columns that actually exist
     present_cols = [c for c in col_map if c in filtered.columns]
     display = filtered[present_cols].rename(columns={c: col_map[c] for c in present_cols})

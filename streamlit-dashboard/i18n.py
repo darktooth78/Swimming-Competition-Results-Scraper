@@ -20,7 +20,7 @@ STRINGS = {
 
         # Swimmer search (View 1)
         "hero_title":           "Ergebnisse deines Kindes finden",
-        "search_placeholder":   "z.B. Vincent Blobner",
+        "search_placeholder":   "z.B. Max Mustermann",
         "search_button":        "Suchen",
         "select_swimmer":       "Schwimmer auswählen",
         "no_results":           "Keine Ergebnisse gefunden.",
@@ -49,6 +49,8 @@ STRINGS = {
         "filter_discipline":    "Disziplin",
         "filter_competition":   "Wettkampf",
         "filter_period":        "Zeitraum",
+        "filter_date_from":     "Von",
+        "filter_date_to":       "Bis",
         "filter_location":      "Ort",
         "filter_birth_year":    "Jahrgang",
         "filter_name":          "Name",
@@ -114,7 +116,7 @@ STRINGS = {
 
         # Swimmer search (View 1)
         "hero_title":           "Find your child's results",
-        "search_placeholder":   "e.g. Vincent Blobner",
+        "search_placeholder":   "e.g. Alex Smith",
         "search_button":        "Search",
         "select_swimmer":       "Select swimmer",
         "no_results":           "No results found.",
@@ -143,6 +145,8 @@ STRINGS = {
         "filter_discipline":    "Discipline",
         "filter_competition":   "Competition",
         "filter_period":        "Period",
+        "filter_date_from":     "From",
+        "filter_date_to":       "To",
         "filter_location":      "Location",
         "filter_birth_year":    "Birth year",
         "filter_name":          "Name",
@@ -200,3 +204,39 @@ STRINGS = {
 def t(key: str, lang: str) -> str:
     """Return the translated string for key in lang ('de' or 'en')."""
     return STRINGS.get(lang, STRINGS["de"]).get(key, key)
+
+
+# Mapping from German stroke token → English stroke display string.
+# Applied only for display; canonical German keys are never changed.
+_STROKE_EN = {
+    "freistil":      "Freestyle",
+    "brust":         "Breaststroke",
+    "schmetterling": "Butterfly",
+    "rücken":        "Backstroke",
+    "lagen":         "Medley",
+}
+
+
+def format_discipline(disc: str, lang: str) -> str:
+    """Return a display-safe discipline label.
+
+    In German mode the canonical string is returned unchanged.
+    In English mode the stroke token is translated while the
+    distance prefix (e.g. "100m") is preserved.
+
+    Examples (EN):
+        "50m Freistil"      → "50m Freestyle"
+        "100m Schmetterling"→ "100m Butterfly"
+        "400m Lagen"        → "400m Medley"
+
+    The internal/canonical value in dataframes is never touched.
+    """
+    if lang != "en":
+        return disc
+    parts = disc.split(" ", 1)          # ["50m", "Freistil"]
+    if len(parts) < 2:
+        return disc
+    stroke_en = _STROKE_EN.get(parts[1].lower())
+    if stroke_en is None:
+        return disc
+    return f"{parts[0]} {stroke_en}"

@@ -18,7 +18,7 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 from data import load_swimmers, load_results, compute_personal_bests
-from i18n import t
+from i18n import t, format_discipline
 
 
 # ---------------------------------------------------------------------------
@@ -114,9 +114,16 @@ def render(lang: str) -> None:
         label_visibility="collapsed",
     )
 
+    def _matches_query(name: str, query: str) -> bool:
+        """Order-agnostic token search: all tokens in query must appear in name."""
+        tokens = query.lower().split()
+        name_lower = name.lower()
+        return all(tok in name_lower for tok in tokens)
+
+    query = search_query.strip()
     filtered = (
-        swimmers[swimmers["name"].str.contains(search_query.strip(), case=False, na=False)]
-        if search_query.strip() else swimmers
+        swimmers[swimmers["name"].apply(lambda n: _matches_query(n, query))]
+        if query else swimmers
     )
 
     if filtered.empty:
@@ -290,12 +297,13 @@ def render(lang: str) -> None:
         arrow     = _trend_arrow(first_time, last_time)
         arrow_col = _recent_form_color(arrow)
         col_idx   = shown % 4
+        disc_label = format_discipline(disc, lang)
 
         with form_cols[col_idx]:
             st.markdown(
                 f"""
 <div style="background:#f7f8fa;border:1px solid #e5e7eb;border-radius:8px;padding:12px 14px;margin-bottom:8px">
-  <div style="font-size:12px;color:#57606a;font-weight:600;text-transform:uppercase;letter-spacing:.04em">{disc}</div>
+  <div style="font-size:12px;color:#57606a;font-weight:600;text-transform:uppercase;letter-spacing:.04em">{disc_label}</div>
   <div style="font-size:22px;font-weight:700;color:#1f2328;line-height:1.2">{_fmt_time(pb_val)}</div>
   <div style="font-size:11px;color:#57606a;margin-bottom:6px">PB</div>
   <div style="font-size:18px;font-weight:600;color:{arrow_col}">{arrow} {_fmt_time(last_time)}</div>
@@ -316,7 +324,7 @@ def render(lang: str) -> None:
     # ══════════════════════════════════════════════════════════════════════
     competitions = sorted(swimmer_results["event_name"].dropna().unique().tolist())
 
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3, col4, col5 = st.columns(5)
     with col1:
         sel_disc = st.selectbox(
             t("filter_discipline", lang),
@@ -336,15 +344,19 @@ def render(lang: str) -> None:
         dates = swimmer_results["date_parsed"].dropna()
         min_d = dates.min().date() if not dates.empty else None
         max_d = dates.max().date() if not dates.empty else None
-        if min_d and max_d and min_d < max_d:
-            sel_range = st.date_input(
-                t("filter_period", lang),
-                value=(min_d, max_d),
-                min_value=min_d, max_value=max_d,
-                key="sw_range",
-            )
-        else:
-            sel_range = None
+        date_from = st.date_input(
+            t("filter_date_from", lang),
+            value=min_d,
+            min_value=min_d, max_value=max_d,
+            key="sw_date_from",
+        )
+    with col5:
+        date_to = st.date_input(
+            t("filter_date_to", lang),
+            value=max_d,
+            min_value=min_d, max_value=max_d,
+            key="sw_date_to",
+        )
 
     view = swimmer_results.copy()
     if sel_disc != t("all_disciplines", lang):
@@ -355,8 +367,8 @@ def render(lang: str) -> None:
         view = view[view["pool"] == "25m"]
     elif sel_pool == t("pool_50m", lang):
         view = view[view["pool"] == "50m"]
-    if sel_range and len(sel_range) == 2:
-        s, e = pd.Timestamp(sel_range[0]), pd.Timestamp(sel_range[1])
+    if date_from and date_to and date_from <= date_to:
+        s, e = pd.Timestamp(date_from), pd.Timestamp(date_to)
         view = view[(view["date_parsed"] >= s) & (view["date_parsed"] <= e)]
 
     # ══════════════════════════════════════════════════════════════════════
@@ -368,7 +380,8 @@ def render(lang: str) -> None:
         return
 
     st.markdown(f"#### {t('chart_title', lang)}")
-    tabs = st.tabs(view_disciplines)
+    tab_labels = [format_discipline(d, lang) for d in view_disciplines]
+    tabs = st.tabs(tab_labels)
 
     for tab, disc in zip(tabs, view_disciplines):
         with tab:

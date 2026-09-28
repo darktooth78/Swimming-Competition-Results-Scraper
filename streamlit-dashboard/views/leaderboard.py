@@ -21,7 +21,7 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 from data import load_results
-from i18n import t
+from i18n import t, format_discipline
 from views.swimmer import _fmt_time, _disc_sort_key
 
 
@@ -51,7 +51,7 @@ def render(lang: str) -> None:
     birth_years  = sorted(pb_df["birth_year"].dropna().unique().astype(int).tolist())
     competitions = sorted(pb_df["event_name"].dropna().unique().tolist())
 
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3, col4, col5 = st.columns(5)
     with col1:
         sel_year = st.selectbox(
             t("filter_birth_year", lang),
@@ -71,15 +71,19 @@ def render(lang: str) -> None:
         dates = pb_df["date_parsed"].dropna()
         min_d = dates.min().date() if not dates.empty else None
         max_d = dates.max().date() if not dates.empty else None
-        if min_d and max_d and min_d < max_d:
-            sel_range = st.date_input(
-                t("filter_period", lang),
-                value=(min_d, max_d),
-                min_value=min_d, max_value=max_d,
-                key="lb_range",
-            )
-        else:
-            sel_range = None
+        date_from = st.date_input(
+            t("filter_date_from", lang),
+            value=min_d,
+            min_value=min_d, max_value=max_d,
+            key="lb_date_from",
+        )
+    with col5:
+        date_to = st.date_input(
+            t("filter_date_to", lang),
+            value=max_d,
+            min_value=min_d, max_value=max_d,
+            key="lb_date_to",
+        )
 
     # Apply filters (re-compute PBs within the filtered window)
     filtered = all_results.dropna(subset=["time_sec"]).copy()
@@ -91,8 +95,8 @@ def render(lang: str) -> None:
         filtered = filtered[filtered["pool"] == "25m"]
     elif sel_pool == t("pool_50m", lang):
         filtered = filtered[filtered["pool"] == "50m"]
-    if sel_range and len(sel_range) == 2:
-        s, e = pd.Timestamp(sel_range[0]), pd.Timestamp(sel_range[1])
+    if date_from and date_to and date_from <= date_to:
+        s, e = pd.Timestamp(date_from), pd.Timestamp(date_to)
         filtered = filtered[(filtered["date_parsed"] >= s) & (filtered["date_parsed"] <= e)]
 
     if filtered.empty:
@@ -124,11 +128,11 @@ def render(lang: str) -> None:
         "lagen":         "Lagen",
     }
 
-    # Build tab list: individual discipline tabs
-    tab_labels = all_discs
+    # Build tab list: individual discipline tabs (display-translated labels)
+    tab_labels = [format_discipline(d, lang) for d in all_discs]
     tabs = st.tabs(tab_labels)
 
-    for tab, disc in zip(tabs, tab_labels):
+    for tab, disc in zip(tabs, all_discs):
         with tab:
             disc_view = (
                 view[view["discipline"] == disc]

@@ -19,7 +19,7 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 from data import load_swimmers, load_results, compute_personal_bests
-from i18n import t
+from i18n import t, format_discipline
 from views.swimmer import _fmt_time, _disc_sort_key
 
 
@@ -38,7 +38,7 @@ def render(lang: str) -> None:
     competitions = sorted(results["event_name"].dropna().unique().tolist())
     birth_years  = sorted(all_swimmers["birth_year"].dropna().unique().astype(int).tolist())
 
-    col1, col2, col3, col4, col5 = st.columns([2, 2, 2, 2, 2])
+    col1, col2, col3, col4, col5, col6 = st.columns([2, 2, 2, 2, 2, 2])
     with col1:
         sel_disc = st.selectbox(
             t("filter_discipline", lang),
@@ -61,16 +61,20 @@ def render(lang: str) -> None:
         dates = results["date_parsed"].dropna()
         min_d = dates.min().date() if not dates.empty else None
         max_d = dates.max().date() if not dates.empty else None
-        if min_d and max_d and min_d < max_d:
-            sel_range = st.date_input(
-                t("filter_period", lang),
-                value=(min_d, max_d),
-                min_value=min_d, max_value=max_d,
-                key="to_range",
-            )
-        else:
-            sel_range = None
+        date_from = st.date_input(
+            t("filter_date_from", lang),
+            value=min_d,
+            min_value=min_d, max_value=max_d,
+            key="to_date_from",
+        )
     with col5:
+        date_to = st.date_input(
+            t("filter_date_to", lang),
+            value=max_d,
+            min_value=min_d, max_value=max_d,
+            key="to_date_to",
+        )
+    with col6:
         name_filter = st.text_input(t("filter_name", lang), key="to_name")
 
     # Apply filters
@@ -81,8 +85,8 @@ def render(lang: str) -> None:
         view = view[view["birth_year"] == int(sel_year)]
     if sel_comp != t("all_competitions", lang):
         view = view[view["event_name"] == sel_comp]
-    if sel_range and len(sel_range) == 2:
-        s, e = pd.Timestamp(sel_range[0]), pd.Timestamp(sel_range[1])
+    if date_from and date_to and date_from <= date_to:
+        s, e = pd.Timestamp(date_from), pd.Timestamp(date_to)
         view = view[(view["date_parsed"] >= s) & (view["date_parsed"] <= e)]
     if name_filter.strip():
         view = view[view["name"].str.contains(name_filter.strip(), case=False, na=False)]
@@ -139,9 +143,13 @@ def render(lang: str) -> None:
                         st.caption(year_str)
 
                         # Mini horizontal bar chart — all disciplines, sorted
+                        sw_data = sw_data.copy()
+                        sw_data["disc_label"] = sw_data["discipline"].apply(
+                            lambda d: format_discipline(d, lang)
+                        )
                         fig = go.Figure(go.Bar(
                             x            = sw_data["best_sec"],
-                            y            = sw_data["discipline"],
+                            y            = sw_data["disc_label"],
                             orientation  = "h",
                             text         = sw_data["time_label"],
                             textposition = "outside",
@@ -192,16 +200,18 @@ def render(lang: str) -> None:
             lambda y: int(y) if pd.notna(y) else ""
         )
         for disc in disc_cols_sorted:
-            display[disc] = pivot_raw[disc].apply(
+            disc_label = format_discipline(disc, lang)
+            display[disc_label] = pivot_raw[disc].apply(
                 lambda v: _fmt_time(v) if pd.notna(v) else "—"
             )
 
         # Mark fastest per discipline column with 🥇
         for disc in disc_cols_sorted:
+            disc_label = format_discipline(disc, lang)
             col_sec = pivot_raw[disc]
             if col_sec.dropna().empty:
                 continue
             fastest_idx = col_sec.idxmin()
-            display.loc[fastest_idx, disc] = "🥇 " + display.loc[fastest_idx, disc]
+            display.loc[fastest_idx, disc_label] = "🥇 " + display.loc[fastest_idx, disc_label]
 
         st.dataframe(display, use_container_width=True, hide_index=True)
