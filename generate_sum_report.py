@@ -203,7 +203,7 @@ def scan_club_page(event_id: int) -> Tuple[int, List[Tuple[int, str]], Dict[str,
         meet_m = re.search(r'<ul class="myresults_nav3a[^"]*"><p[^>]*>([^<]+)</p>', html)
     raw_meet = meet_m.group(1).strip() if meet_m else ""
 
-    m_meta = re.match(r'^(.*?)\s*\((.*?)\)\s*-\s*(.*)$', raw_meet)
+    m_meta = re.match(r'^(.*?)\s*\((\d{1,2}\.[-.\d]*\d{4})\)\s*-\s*(.*)$', raw_meet)
     if m_meta:
         e_name = m_meta.group(1).strip()
         e_date = m_meta.group(2).strip()
@@ -262,7 +262,7 @@ def parse_participant_page(
     # Event metadata
     meet_m = re.search(r'<p class="myresults_meetname2">([^<]+)</p>', html)
     raw_meet = meet_m.group(1).strip() if meet_m else ""
-    m_meta = re.match(r'^(.*?)\s*\((.*?)\)\s*-\s*(.*)$', raw_meet)
+    m_meta = re.match(r'^(.*?)\s*\((\d{1,2}\.[-.\d]*\d{4})\)\s*-\s*(.*)$', raw_meet)
     if m_meta:
         e_name = m_meta.group(1).strip()
         e_date = m_meta.group(2).strip()
