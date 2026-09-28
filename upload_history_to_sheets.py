@@ -155,7 +155,7 @@ def _read_csv(path: str) -> List[Dict[str, str]]:
 # ---------------------------------------------------------------------------
 
 def upload(csv_path: str, dry_run: bool) -> None:
-    now_str = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+    now_str = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     # ── Load CSV ─────────────────────────────────────────────────────────────
     print(f"\n[1/5] Reading {csv_path} ...")
