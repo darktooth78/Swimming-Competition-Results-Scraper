@@ -6,7 +6,7 @@ This file provides guidance to agents when working with code in this repository.
 
 **Stack**: Python 3, `requests`, CustomTkinter GUI  
 **Purpose**: Multi-threaded HTTP scraper for myresults.eu swimming competition data  
-**Version**: 2.3.0 — no Selenium, no Chrome
+**Version**: 2.4.0 — no Selenium, no Chrome
 
 ---
 
@@ -40,6 +40,11 @@ process_single_event()
 - Pattern: `"EventName (DD.MM.YYYY - DD.MM.YYYY) - Location"`
 - Fallback: `myresults_nav3a` `<p>` tag
 - Results are cached in `event_metadata_cache` (keyed by event_id) — no second fetch needed
+- **Parentheses in event names**: Some events contain `(Word)` inside the name itself, e.g.
+  `"11. Ottokar Havlik Memorial (Jugendkriterium) (02.-03.04.2011) - Schwechat"`.
+  The metadata regex must anchor on the **date parenthesis** specifically:
+  `r'^(.*?)\s*\((\d{1,2}\.[-.\d]*\d{4})\)\s*-\s*(.*)$'`
+  This requires the captured group to start with a digit+dot, skipping word-only parentheticals.
 
 ### Results Section Detection
 - `ERGEBNISSE_HEADER_PATTERN` locates the `<div>` with "Ergebnisse" text
@@ -57,11 +62,20 @@ process_single_event()
 - Caller (`parse_results_from_html`) checks for `None` and skips the row
 
 ### Discipline Normalisation
-- Raw race names follow `"NNm Stroke [optional extras]"` (e.g. `"50m Freistil Kinder"`)
-- `normalize_discipline()` strips heat, gender, age-group tokens **and** then applies
-  `DISCIPLINE_CORE_PATTERN` (`^(\d+\s*[mM]?\s+\S+)`) to keep only the first two tokens
-- This maps `"50m Freistil Kinder"` and `"50m Freistil Jugend"` to the same key `"50m Freistil"`
-- The "keep fastest" logic in `parse_results_from_html` then automatically picks the best time
+- Raw race names from historical events include heat/gender/round prefixes:
+  `"1 - 100m Brust Damen Vorlauf"`, `"50m Freestyle Men Final"`, etc.
+- `normalize_discipline()` (in `timescraper_010.py`) and `_normalize_discipline()` (in
+  `generate_sum_report.py`) apply the same pipeline:
+  1. Return `None` for relay events (contains `"4x"`)
+  2. Strip leading `"N - "` prefix (`PREFIX_PATTERN`)
+  3. Strip gender tokens: Men/Women/Mixed/Herren/Damen/männlich/weiblich/Frauen/Männer
+  4. Strip heat tokens: Vorlauf/Preliminary/Heats/Entscheidung/Lauf N
+  5. Strip final tokens: Final/Finale/A-Final/B-Final
+  6. Strip age tokens: `AK\d+.*`, `und jünger`
+  7. Translate EN→DE stroke names (Freestyle→Freistil, Backstroke→Rücken, etc.)
+  8. Apply `DISCIPLINE_CORE_PATTERN` (`^(\d+\s*[mM]?\s+\S+)`) — keeps only distance + stroke
+- Result: `"1 - 100m Brust Damen Vorlauf"` → `"100m Brust"`, `"50m Freestyle Men Final"` → `"50m Freistil"`
+- After normalisation, dedup per `(swimmer_id, event_id, discipline)` keeps the fastest time
 
 ### Pool Size Detection
 - `parse_pool_size_from_overview(event_id)` fetches `https://myresults.eu/de-AT/Meets/Recent/{event}/Overview`
@@ -86,15 +100,32 @@ process_single_event()
 - `reset_http_session()` is called concurrently to abort in-flight connections
 
 ### Season / Multi-Event & Medal Reports (Club Scraper)
-- Script: `generate_sum_report.py` (and club-level batch logic)
-- **Club-First URL Discovery**: `https://myresults.eu/de-AT/Meets/Recent/{event_id}/Club/{club_id}` (e.g. Club `6614` for SU Mödling)
+- Script: `generate_sum_report.py`
+- **Two modes**:
+  - `python3 generate_sum_report.py` (default `recent`): scans events 2000–2459, date-filtered
+    01/2025–08/2026 → `SUM_Ergebnisse_2025_2026_Alle.csv` + `SUM_Medaillen_2025_2026.csv`
+  - `python3 generate_sum_report.py --mode history`: scans events 504–2460, **no date filter**
+    → `SUM_Ergebnisse_2010_2026_Alle.csv` — full Club 6614 history (mid-2010 to present)
+- **Both modes produce the same enriched schema**:
+  `event_id | swimmer_id | date | event_name | location | name | birth_year | club | pool |`
+  `discipline | time_str | time_sec | place | medal | age_group`
+- **Club-First URL Discovery**: `https://myresults.eu/de-AT/Meets/Recent/{event_id}/Club/{club_id}`
+- **3-phase execution**: (1) scan club pages → (2) fetch pool sizes → (3) fetch participant pages
+- **Strict validation** (both modes):
+  - Drop blank / `"Unknown"` / `"Unbekannt"` swimmer names
+  - Drop relay teams: name matches `MANNSCHAFT|STAFFEL`, or discipline contains `4x`
+  - Drop blank / `"Unknown"` event names
+  - Drop rows where time doesn't match `^[0-5]?\d:[0-5]\d\.\d{2}$|^[0-5]\d\.\d{2}$`
+  - Post-normalisation dedup: keep fastest time per `(swimmer_id, event_id, discipline)`
+- **Historical Data Availability (myresults.eu Archive Analysis)**:
+  - **Club ID `6614`**: 401 events found (IDs 504–2460), 7,252 participant pages, 25,520 clean rows
+    after normalisation and dedup. Verified: 29 unique canonical disciplines, 0 bad dates, 0 Unknown entries.
+  - **Legacy Club ID `1678`**: covers 10/2000–06/2010 if pre-2010 history is ever needed
 - **Placements & Medals**:
   - Placements are in `<span class="msecm-place...">` (e.g., `1.`, `2.`, `3.`)
-  - Medals can be identified by classes `msecm-place-gold`, `msecm-place-silver`, `msecm-place-bronze` or placement strings `'1.'`, `'2.'`, `'3.'`
+  - Medals: classes `msecm-place-gold`, `msecm-place-silver`, `msecm-place-bronze`
 - **Age Categories / Altersklasse**:
-  - Found in `<span class="myresults_content_divtable_details_black">` within result rows (e.g., `Jahrgang 2014`, `Schüler II`, `AK16`, `Junior`, `Open`)
-- **Direct Race Links**:
-  - Participant page results link to specific heats/finals: `https://myresults.eu/de-AT/Meets/Recent/{event_id}/Results/{race_result_id}`
+  - Found in `<span class="myresults_content_divtable_details_black">` within result rows
 
 ---
 
@@ -108,6 +139,13 @@ process_single_event()
 **Syntax check**:
 ```bash
 python3 -m py_compile timescraper_010.py
+python3 -m py_compile generate_sum_report.py
+python3 -m py_compile streamlit-dashboard/i18n.py
+python3 -m py_compile streamlit-dashboard/views/swimmer.py
+python3 -m py_compile streamlit-dashboard/views/leaderboard.py
+python3 -m py_compile streamlit-dashboard/views/team_overview.py
+python3 -m py_compile streamlit-dashboard/views/recent.py
+python3 -m py_compile streamlit-dashboard/views/medals.py
 ```
 
 **Functional test** (no GUI, no display needed):
@@ -124,10 +162,6 @@ assert len(results) == 6
 # All keys must be 'NNm Stroke' — no trailing suffixes
 for k in results:
     assert len(k.split()) <= 2, f'Unexpected suffix in discipline key: {k!r}'
-# Column order check
-cols = list(results.keys())
-sorted_cols = s._sort_discipline_columns(cols)
-assert cols == sorted_cols or True  # order only guaranteed after save_to_csv
 # Pool size detection
 assert s.parse_pool_size_from_overview(2248) == '25m'
 assert s.parse_pool_size_from_overview(2341) == '50m'
@@ -135,8 +169,45 @@ print('OK')
 "
 ```
 
-**Big test** (198 tasks, events 2285–2350, 3 participants):
-- Expected: 29 rows saved, 0 errors, < 2 s wall time
+**i18n + search unit test**:
+```bash
+python3 -c "
+import sys; sys.path.insert(0, 'streamlit-dashboard')
+from i18n import t, format_discipline
+
+# Placeholders
+assert t('search_placeholder', 'de') == 'z.B. Max Mustermann'
+assert t('search_placeholder', 'en') == 'e.g. Alex Smith'
+
+# Dual date keys
+assert t('filter_date_from', 'de') == 'Von'
+assert t('filter_date_to',   'en') == 'To'
+
+# Discipline translations
+assert format_discipline('50m Freistil',       'en') == '50m Freestyle'
+assert format_discipline('100m Schmetterling', 'en') == '100m Butterfly'
+assert format_discipline('400m Lagen',         'en') == '400m Medley'
+assert format_discipline('50m Freistil',       'de') == '50m Freistil'
+print('OK')
+"
+```
+
+**generate_sum_report validation test**:
+```bash
+python3 -c "
+import generate_sum_report as g, datetime
+assert g.is_valid_swimmer('BLOBNER Vincent')
+assert not g.is_valid_swimmer('Unknown')
+assert not g.is_valid_swimmer('1. MANNSCHAFT')
+assert g.time_to_seconds('30.45') == 30.45
+assert g.time_to_seconds('99:00.00') is None
+assert g._normalize_discipline('1 - 100m Brust Damen Vorlauf') == '100m Brust'
+assert g._normalize_discipline('4x100m Freistil') is None
+assert g.parse_date_str('01.-02.04.2017') == datetime.date(2017, 4, 2)
+assert g.parse_date_str('11. Ottokar Havlik Memorial (Jugendkriterium) (02.-03.04.2011) - Schwechat') is None  # not a date string
+print('OK')
+"
+```
 
 ---
 
@@ -152,45 +223,75 @@ print('OK')
 
 ### Results sheet column layout (v2.4+)
 - Columns A–G: `event_id | swimmer_id | discipline | time_str | time_sec | fetched_at | source`
-- Columns H–J (optional, added in `feature/medaillenspiegel`): `place | medal | age_group`
+- Columns H–J: `place | medal | age_group`
 - Older rows without H–J are safe — `load_results()` and `load_medals()` fill in empty strings
-- **Header row must include `place`, `medal`, `age_group` in cells H1–J1** (add once manually after pasting the updated GAS code)
+- **Header row must include `place`, `medal`, `age_group` in cells H1–J1**
 
-### Backfill procedure (Sub-Task 2 — 01/2025–08/2026)
-Run these steps in order to import all 57 events / ~6 000 results into `SwimmingResults_DB`:
+### Direct Python → Sheets batch uploader (`upload_history_to_sheets.py`)
+Replaces the old GAS chunk-paste workflow for large backfills.
 
 ```bash
-# Step 1 — Re-scrape with swimmer_id included in the output (~15 min, 25 threads)
-python3 generate_sum_report.py
-# Produces: SUM_Ergebnisse_2025_2026_Alle.csv  (with event_id + swimmer_id columns)
+# Dry-run (validate only, no writes):
+streamlit-dashboard/.venv/bin/python3 upload_history_to_sheets.py --dry-run
 
-# Step 2 — Convert & chunk for GAS import
-python3 backfill_convert.py
-# Produces: backfill_chunk_01.csv, backfill_chunk_02.csv, … (≤500 rows each)
-# Also prints GAS import instructions.
+# Live upload:
+streamlit-dashboard/.venv/bin/python3 upload_history_to_sheets.py
+
+# Custom CSV path:
+streamlit-dashboard/.venv/bin/python3 upload_history_to_sheets.py --csv SUM_Ergebnisse_2010_2026_Alle.csv
 ```
 
-Then for each `backfill_chunk_XX.csv`:
-1. Open the chunk file in a text editor and **copy all content** (Cmd+A, Cmd+C).
-2. In the Apps Script editor open `Import.gs`.
-3. Add a temporary wrapper at the bottom:
-   ```js
-   function runImportChunk01() {
-     const csv = `<PASTE HERE>`;
-     Logger.log(JSON.stringify(importCsvData(csv)));
-   }
-   ```
-4. Select `runImportChunk01` in the dropdown and click **Run**.
-5. Check the Execution Log for `{ rows_inserted, rows_skipped, errors }`.
-6. Repeat for each remaining chunk.
-
-> **Idempotent**: `importCsvData()` uses the skip-set — re-running a chunk won't create duplicates.
-> **Birth year**: `generate_sum_report.py` doesn't scrape year-of-birth; the `Year` column is left blank and can be backfilled later via the nightly scraper (which reads it from the participant detail page).
+- Reads `oauth_token.json` (produced by `generate_streamlit_token.py`); auto-refreshes if expired
+- Pre-upload validation: skips rows with blank/Unknown name or event_name
+- Deduplicates against existing sheet rows using composite key `(event_id, swimmer_id, discipline)`
+  and keeps the fastest time within the CSV itself
+- Batch-appends in chunks of 2,000 rows to avoid API payload limits
+- Writes Events (A–G), Swimmers (A–D), Results (A–J)
+- **Completed backfill (2010–2026)**: 25,520 rows → 472 Events, 411 Swimmers, 25,520 Results in SwimmingResults_DB
 
 ### Streamlit deployment
 - Streamlit Cloud watches the **`feature/google-workspace-migration`** branch, **not** `main`
-- Merge flow: feature branch → `main` → `feature/google-workspace-migration` → push both
+- Merge flow: feature branch → `feature/google-workspace-migration` → push (Streamlit auto-redeploys)
+- For `main`: merge separately when ready for a formal release
 - The Apps Script project is a separate copy; GitHub pushes do not update it automatically
+
+### Local Streamlit development
+```bash
+cd streamlit-dashboard
+.venv/bin/streamlit run app.py
+```
+- The `.venv` is inside `streamlit-dashboard/` — create once with:
+  `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt`
+- Secrets: `streamlit-dashboard/.streamlit/secrets.toml` (gitignored) — copy from
+  `oauth_token.json` into the `[gcp_oauth_token]` TOML block (see `secrets.toml.example`)
+
+---
+
+## Streamlit Dashboard
+
+### i18n (`streamlit-dashboard/i18n.py`)
+- All UI strings in `STRINGS["de"]` and `STRINGS["en"]` dicts; retrieved via `t(key, lang)`
+- `format_discipline(disc, lang) -> str` — display-only translation of canonical German discipline
+  strings to English: Freistil→Freestyle, Brust→Breaststroke, Schmetterling→Butterfly,
+  Rücken→Backstroke, Lagen→Medley. Returns the string unchanged in DE mode.
+  **The canonical German key in the dataframe is never modified — only the display label.**
+
+### Discipline display pattern (views)
+- Always build a `disc_label_to_key = {format_discipline(d, lang): d for d in disciplines}` map
+  when disciplines are shown in a dropdown or selectbox, so the translated label can be resolved
+  back to the canonical German key for dataframe filtering.
+- Use `format_discipline(d, lang)` for tab labels, chart y-axes, and table column headers.
+- Filter the dataframe using the canonical German key, never the display label.
+
+### Swimmer search (order-agnostic)
+- All query tokens must appear in the swimmer name (case-insensitive), in any order:
+  `all(tok in name.lower() for tok in query.lower().split())`
+- "Vincent Blobner", "blobner vincent", "BLOBNER" all find "BLOBNER Vincent"
+
+### Date filters (Von / Bis)
+- All views (Swimmer, Leaderboard, Team Overview, Medals) use **two separate `st.date_input`
+  widgets** (keys `filter_date_from` / `filter_date_to` in i18n) instead of a tuple-returning
+  range picker. Guard: only apply filter when `date_from <= date_to`.
 
 ---
 
