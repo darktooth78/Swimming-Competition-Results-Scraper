@@ -237,9 +237,11 @@ def render(lang: str) -> None:
         lambda d: "#22c55e" if (not pd.isna(d) and d < -0.5) else "#3b82d4"
     )
 
+    pb_data["disc_label"] = pb_data["discipline"].apply(lambda d: format_discipline(d, lang))
+
     fig_pb = go.Figure(go.Bar(
         x             = pb_data["pb_sec"],
-        y             = pb_data["discipline"],
+        y             = pb_data["disc_label"],
         orientation   = "h",
         text          = pb_data["time_label"],
         textposition  = "outside",
@@ -324,11 +326,16 @@ def render(lang: str) -> None:
     # ══════════════════════════════════════════════════════════════════════
     competitions = sorted(swimmer_results["event_name"].dropna().unique().tolist())
 
+    # Build label→canonical map for discipline dropdown so display is translated
+    # but filtering still uses the German canonical key stored in the dataframe.
+    disc_label_to_key = {format_discipline(d, lang): d for d in disciplines_sorted}
+    disc_labels_sorted = [format_discipline(d, lang) for d in disciplines_sorted]
+
     col1, col2, col3, col4, col5 = st.columns(5)
     with col1:
-        sel_disc = st.selectbox(
+        sel_disc_label = st.selectbox(
             t("filter_discipline", lang),
-            [t("all_disciplines", lang)] + disciplines_sorted,
+            [t("all_disciplines", lang)] + disc_labels_sorted,
             key="sw_disc",
         )
     with col2:
@@ -358,9 +365,12 @@ def render(lang: str) -> None:
             key="sw_date_to",
         )
 
+    # Resolve translated label back to canonical German key for dataframe filter
+    sel_disc_key = disc_label_to_key.get(sel_disc_label)
+
     view = swimmer_results.copy()
-    if sel_disc != t("all_disciplines", lang):
-        view = view[view["discipline"] == sel_disc]
+    if sel_disc_label != t("all_disciplines", lang) and sel_disc_key:
+        view = view[view["discipline"] == sel_disc_key]
     if sel_comp != t("all_competitions", lang):
         view = view[view["event_name"] == sel_comp]
     if sel_pool == t("pool_25m", lang):

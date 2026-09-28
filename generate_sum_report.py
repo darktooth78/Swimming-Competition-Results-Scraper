@@ -29,6 +29,43 @@ import concurrent.futures
 from typing import List, Dict, Any, Optional, Tuple
 
 # ---------------------------------------------------------------------------
+# Discipline normalisation (mirrors timescraper_010.py normalize_discipline)
+# ---------------------------------------------------------------------------
+_RELAY_RE      = re.compile(r"4x", re.IGNORECASE)
+_PREFIX_RE     = re.compile(r"^\d+\s*-\s*")
+_GENDER_RE     = re.compile(r"\b(Men|Women|Mixed|Herren|Damen|männlich|weiblich|Frauen|Männer)\b", re.IGNORECASE)
+_HEAT_RE       = re.compile(r"\b(Preliminary|Vorlauf|Heats|Entscheidung|Lauf\s*\d*)\b", re.IGNORECASE)
+_FINAL_RE      = re.compile(r"\b([AB]-)?(Final|Finale)\b", re.IGNORECASE)
+_AGE_RE        = re.compile(r"\bAK\s*\d+.*", re.IGNORECASE)
+_YOUNGER_RE    = re.compile(r"\bund\s+jünger\b", re.IGNORECASE)
+_WS_RE         = re.compile(r"\s+")
+_CORE_RE       = re.compile(r"^(\d+\s*[mM]?\s+\S+)", re.IGNORECASE)
+_TRANSLATIONS  = {
+    "Backstroke": "Rücken", "Breaststroke": "Brust", "Butterfly": "Schmetterling",
+    "Freestyle": "Freistil", "Ind. Medley": "Lagen", "Medley": "Lagen", "Free": "Freistil",
+}
+
+def _normalize_discipline(raw: str) -> Optional[str]:
+    """Strip heat/gender/age suffixes and translate EN→DE stroke names.
+    Returns None for relay (4x) events."""
+    if _RELAY_RE.search(raw):
+        return None
+    name = _PREFIX_RE.sub("", raw).strip()
+    name = _GENDER_RE.sub("", name)
+    name = _HEAT_RE.sub("", name)
+    name = _FINAL_RE.sub("", name)
+    name = _AGE_RE.sub("", name)
+    name = _YOUNGER_RE.sub("", name)
+    for eng, ger in _TRANSLATIONS.items():
+        name = name.replace(eng, ger)
+    name = _WS_RE.sub(" ", name).strip().strip("- ")
+    m = _CORE_RE.match(name)
+    if m:
+        name = m.group(1).strip()
+    return name if name else None
+
+
+# ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
 RECENT_START_DATE = datetime.date(2025, 1, 1)
@@ -59,13 +96,33 @@ POOL_SIZE_RE = re.compile(r'(\d+)m\s*\((?:SCM|LCM)\)', re.IGNORECASE)
 # ---------------------------------------------------------------------------
 
 def parse_date_str(d_str: str) -> Optional[datetime.date]:
-    """Parse date from strings like '23.-24.05.2026' or '04.05.2025'."""
-    m = re.search(r'(\d{1,2})\.(\d{1,2})\.(\d{4})$', d_str.strip())
+    """Parse date from strings like '23.-24.05.2026', '04.05.2025', or
+    multi-day formats like '28.02.-01.03.2025'.
+    Always returns the last (end) date of the event."""
+    s = d_str.strip()
+    # Find all dd.mm.yyyy occurrences; take the last one
+    full = re.findall(r'(\d{1,2})\.(\d{1,2})\.(\d{4})', s)
+    if full:
+        d, mo, y = full[-1]
+        try:
+            return datetime.date(int(y), int(mo), int(d))
+        except ValueError:
+            pass
+    # Cross-month: "28.02.-01.03.2025" — day.month already matched above
+    # Fallback: trailing year with earlier day tokens e.g. "01.-02.04.2017"
+    m = re.search(r'(\d{1,2})\.-(\d{1,2})\.(\d{2})\.(\d{4})$', s)
+    if m:
+        try:
+            return datetime.date(int(m.group(4)), int(m.group(3)), int(m.group(2)))
+        except ValueError:
+            pass
+    # Last resort: any two-digit day + two-digit month + four-digit year at end
+    m = re.search(r'(\d{1,2})\.(\d{1,2})\.(\d{4})', s)
     if m:
         try:
             return datetime.date(int(m.group(3)), int(m.group(2)), int(m.group(1)))
         except ValueError:
-            return None
+            pass
     return None
 
 
@@ -239,12 +296,12 @@ def parse_participant_page(
         anchor_m = re.search(r'<a[^>]*href="[^"]*Results/[^"]*"[^>]*>(.*?)<', chunk)
         if not anchor_m:
             continue
-        disc = re.sub(r'<[^>]+>', '', anchor_m.group(1)).strip()
-        if not disc or disc == "Das Unternehmen":
+        disc_raw = re.sub(r'<[^>]+>', '', anchor_m.group(1)).strip()
+        if not disc_raw or disc_raw == "Das Unternehmen":
             continue
-        # Skip relay disciplines
-        if '4x' in disc.lower():
-            continue
+        disc = _normalize_discipline(disc_raw)
+        if disc is None:
+            continue   # relay or unparseable — skip
 
         # Place
         place_m = re.search(r'<span class="msecm-place[^"]*">([^<]+)</span>', chunk)
@@ -390,6 +447,22 @@ def run_scrape(
     print(f"\n✅ Rows passing validation: {len(all_results)}")
     if unknowns:
         print(f"⚠️  Rows with invalid name/event (should be 0): {len(unknowns)}")
+
+
+    # Dedup: keep fastest time per (swimmer_id, event_id, discipline).
+    # Required because normalization collapses heats/finals to the same key.
+    best: Dict[Tuple, Dict] = {}
+    for r in all_results:
+        key = (r['swimmer_id'], r['event_id'], r['discipline'])
+        try:
+            t_sec = float(r['time_sec'])
+        except ValueError:
+            t_sec = float('inf')
+        if key not in best or t_sec < float(best[key]['time_sec']):
+            best[key] = r
+    all_results = list(best.values())
+    print(f"After dedup (fastest per swimmer/event/discipline): {len(all_results)} rows")
+
 
     # ── Sort & save ───────────────────────────────────────────────────────
     all_results.sort(key=lambda r: (r['date'], r['event_name'], r['name'], r['discipline']))
