@@ -163,6 +163,20 @@ def render(lang: str) -> None:
         st.info(t("no_results", lang))
         return
 
+    # Reset date filter and dropdowns when swimmer changes
+    if st.session_state.get("_last_swimmer_id") != swimmer_id:
+        st.session_state["_last_swimmer_id"] = swimmer_id
+        sw_dates = swimmer_results["date_parsed"].dropna()
+        if not sw_dates.empty:
+            st.session_state["sw_date_from"] = sw_dates.min().date()
+            st.session_state["sw_date_to"] = sw_dates.max().date()
+        else:
+            st.session_state.pop("sw_date_from", None)
+            st.session_state.pop("sw_date_to", None)
+        st.session_state.pop("sw_disc", None)
+        st.session_state.pop("sw_comp", None)
+        st.session_state.pop("sw_pool", None)
+
     swimmer_results = compute_personal_bests(swimmer_results)
 
     # ── Pre-compute stats used in multiple sections ─────────────────────────
