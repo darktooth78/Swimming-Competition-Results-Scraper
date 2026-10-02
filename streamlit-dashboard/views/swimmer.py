@@ -554,7 +554,9 @@ def render(lang: str) -> None:
             st.plotly_chart(fig, use_container_width=True)
 
             # ── Results table ──────────────────────────────────────────────
-            table = disc_data[["date", "event_name", "location", "pool", "time_fmt", "is_pb"]].copy()
+            table = disc_data.sort_values("date_parsed", ascending=False).copy()
+            table = table[["date_parsed", "event_name", "location", "pool", "time_fmt", "is_pb"]]
+            table["date_parsed"] = table["date_parsed"].dt.date
             table["time_fmt"] = table.apply(
                 lambda r: r["time_fmt"] + " 🏅" if r["is_pb"] else r["time_fmt"], axis=1
             )
@@ -566,4 +568,14 @@ def render(lang: str) -> None:
                 t("col_date", lang), t("col_competition", lang),
                 t("col_location", lang), t("col_pool", lang), t("col_time", lang),
             ]
-            st.dataframe(table, use_container_width=True, hide_index=True)
+            st.dataframe(
+                table,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    t("col_date", lang): st.column_config.DateColumn(
+                        t("col_date", lang),
+                        format="DD.MM.YYYY",
+                    ),
+                },
+            )
