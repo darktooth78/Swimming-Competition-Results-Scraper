@@ -106,6 +106,31 @@ def _get_client() -> gspread.Client:
 
 
 # ---------------------------------------------------------------------------
+# Date normalisation
+# ---------------------------------------------------------------------------
+# The CSV stores raw date strings from myresults.eu metadata, e.g.:
+#   "01.-02.04.2017", "28.02.-01.03.2025", "04.05.2025"
+# The Events sheet expects "DD/MM/YYYY" (GAS parseLastDate() format).
+# We normalise here so the Streamlit dashboard can parse all dates uniformly.
+
+import re as _re
+_DATE_RE = _re.compile(r"(\d{1,2})\.(\d{1,2})\.(\d{4})")
+
+
+def _normalise_date(raw: str) -> str:
+    """
+    Convert a raw event date string to DD/MM/YYYY.
+    Extracts all dd.mm.yyyy occurrences and returns the last one (end date).
+    Returns the original string unchanged if no match is found.
+    """
+    matches = _DATE_RE.findall(raw.strip())
+    if not matches:
+        return raw
+    d, m, y = matches[-1]
+    return f"{int(d):02d}/{int(m):02d}/{y}"
+
+
+# ---------------------------------------------------------------------------
 # Validation helpers
 # ---------------------------------------------------------------------------
 
@@ -229,7 +254,7 @@ def upload(csv_path: str, dry_run: bool) -> None:
             new_events.append([
                 eid,
                 row.get("event_name", ""),
-                row.get("date", ""),
+                _normalise_date(row.get("date", "")),
                 row.get("location", ""),
                 now_str,
                 "",  # modling_participant_count — filled separately

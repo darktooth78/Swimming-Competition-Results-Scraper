@@ -25,6 +25,49 @@ import pandas as pd
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 
+
+# ---------------------------------------------------------------------------
+# Date parsing
+# ---------------------------------------------------------------------------
+# The Events sheet may contain dates in two formats:
+#   • "DD/MM/YYYY"       — produced by GAS parseLastDate() and current uploads
+#   • Raw range strings  — e.g. "01.-02.04.2017", "28.02.-01.03.2025"
+#     written by the historical backfill (upload_history_to_sheets.py).
+# We normalise both to a pandas Timestamp so date pickers work across the
+# full history back to 2010.
+_DATE_FORMATS = ["%d/%m/%Y", "%d.%m.%Y"]
+_DATE_RANGE_RE = re.compile(r"(\d{1,2})\.(\d{1,2})\.(\d{4})")
+
+
+def _parse_event_date_series(series: pd.Series) -> pd.Series:
+    """
+    Parse a Series of event date strings into Timestamps.
+    Handles DD/MM/YYYY, DD.MM.YYYY, and range strings like "01.-02.04.2017"
+    by extracting the LAST dd.mm.yyyy match (= end date of the event).
+    """
+    def _parse_one(val: str) -> pd.Timestamp:
+        if not isinstance(val, str) or not val.strip():
+            return pd.NaT
+        # Try standard single-date formats first
+        for fmt in _DATE_FORMATS:
+            try:
+                return pd.Timestamp(pd.to_datetime(val.strip(), format=fmt))
+            except (ValueError, TypeError):
+                pass
+        # Fall back: extract all dd.mm.yyyy occurrences, take the last
+        matches = _DATE_RANGE_RE.findall(val)
+        if matches:
+            d, m, y = matches[-1]
+            try:
+                return pd.Timestamp(int(y), int(m), int(d))
+            except (ValueError, TypeError):
+                pass
+        return pd.NaT
+
+    return series.apply(_parse_one)
+
+
+
 SPREADSHEET_NAME = "SwimmingResults_DB"
 
 
@@ -103,7 +146,7 @@ def load_events() -> pd.DataFrame:
     if df.empty:
         return df
     df["event_id"] = df["event_id"].astype(str)
-    df["date_parsed"] = pd.to_datetime(df["date"], format="%d/%m/%Y", errors="coerce")
+    df["date_parsed"] = _parse_event_date_series(df["date"])
     # Ensure pool column exists (backwards-compatible with sheets that predate v2.3)
     if "pool" not in df.columns:
         df["pool"] = "50m"

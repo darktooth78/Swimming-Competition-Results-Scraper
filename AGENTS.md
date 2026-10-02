@@ -248,6 +248,25 @@ streamlit-dashboard/.venv/bin/python3 upload_history_to_sheets.py --csv SUM_Erge
 - Batch-appends in chunks of 2,000 rows to avoid API payload limits
 - Writes Events (A–G), Swimmers (A–D), Results (A–J)
 - **Completed backfill (2010–2026)**: 25,520 rows → 472 Events, 411 Swimmers, 25,520 Results in SwimmingResults_DB
+- **Date normalisation**: raw date strings from the CSV (e.g. `"01.-02.04.2017"`) are converted to
+  `DD/MM/YYYY` by `_normalise_date()` before writing to the Events sheet. Existing rows are never
+  re-written by the uploader (dedup by event_id skips them).
+
+### One-shot date patch (`patch_event_dates.py`)
+Fixes Events rows that were uploaded before the date normalisation fix — converts any non-`DD/MM/YYYY`
+date in column C to the correct format in a single batch API call.
+
+```bash
+# Dry-run (preview only):
+streamlit-dashboard/.venv/bin/python3 patch_event_dates.py --dry-run
+
+# Live patch:
+streamlit-dashboard/.venv/bin/python3 patch_event_dates.py
+```
+
+- Safe to re-run — rows already in `DD/MM/YYYY` format are skipped
+- Reads `oauth_token.json` for auth (same as uploader)
+- After patching, wait up to 5 minutes for the Streamlit cache TTL to expire (or rerun the app)
 
 ### Streamlit deployment
 - Streamlit Cloud watches the **`feature/google-workspace-migration`** branch, **not** `main`
@@ -292,6 +311,30 @@ cd streamlit-dashboard
 - All views (Swimmer, Leaderboard, Team Overview, Medals) use **two separate `st.date_input`
   widgets** (keys `filter_date_from` / `filter_date_to` in i18n) instead of a tuple-returning
   range picker. Guard: only apply filter when `date_from <= date_to`.
+
+### Event date parsing (`streamlit-dashboard/data.py`)
+- `load_events()` uses `_parse_event_date_series()` instead of a strict `pd.to_datetime(format=…)` call.
+- Handles **both** date formats found in the Events sheet:
+  - `"DD/MM/YYYY"` — produced by GAS `parseLastDate()` and current uploader
+  - Raw range strings — e.g. `"01.-02.04.2017"`, `"28.02.-01.03.2025"` — written by the
+    historical backfill before the normalisation fix was applied
+- Strategy: try `%d/%m/%Y` then `%d.%m.%Y`; fall back to regex extraction of the last
+  `dd.mm.yyyy` occurrence in the string (= event end date). Returns `NaT` only if no
+  date digits are found at all.
+- **Root cause of the pre-2025 date picker bug**: the old strict parser silently coerced all
+  range-style dates to `NaT`, so `min_d` was never earlier than the first GAS-uploaded event.
+  Fixed by `_parse_event_date_series()` + the one-shot `patch_event_dates.py` sheet fix.
+
+### Manual sheet edits — persistence rules
+- **Event name / date / location**: GAS `upsertEvent()` overwrites these fields on the next
+  nightly run if the scraped value is non-blank and non-`"Unknown"`. Edits to recent events
+  may be lost; edits to historical events (outside the nightly scan window) are permanent.
+- **Pool size** (column G): never overwritten by GAS if already set (`pool || row[6]`).
+  Manual corrections to pool size are **always persistent**.
+- **Swim times / Results rows**: `appendResults()` only appends — it never updates existing rows.
+  The nightly scraper skips any `(event_id, swimmer_id)` pair already in the sheet (skip set).
+  Manual time edits are **persistent** unless a `Rescan_Queue` entry is added for that
+  swimmer+event, which triggers `deleteResults()` and a full re-fetch.
 
 ---
 
