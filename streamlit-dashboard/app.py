@@ -15,7 +15,38 @@ st.set_page_config(
     page_title="SU MöDLING Schwimmergebnisse",
     page_icon="🏊",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="auto",
+)
+
+# ---------------------------------------------------------------------------
+# Mobile CSS — only active below 768 px; desktop sees no change
+# ---------------------------------------------------------------------------
+st.markdown(
+    """
+    <style>
+    @media (max-width: 768px) {
+        /* Stack all Streamlit columns vertically */
+        [data-testid="stHorizontalBlock"] {
+            flex-wrap: wrap !important;
+        }
+        [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] {
+            width: 100% !important;
+            flex: 1 1 100% !important;
+            min-width: 100% !important;
+        }
+        /* Wider tap targets for buttons */
+        button[kind="secondary"], button[kind="primary"] {
+            min-height: 44px !important;
+        }
+        /* Prevent wide tables / charts from causing horizontal page scroll */
+        [data-testid="stDataFrame"], .js-plotly-plot {
+            max-width: 100% !important;
+            overflow-x: auto !important;
+        }
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
 )
 
 from data import get_last_run_label

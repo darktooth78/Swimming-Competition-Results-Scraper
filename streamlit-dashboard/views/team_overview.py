@@ -158,9 +158,9 @@ def render(lang: str) -> None:
                         ))
                         fig.update_layout(
                             xaxis  = dict(showticklabels=False, showgrid=False, zeroline=False),
-                            yaxis  = dict(autorange="reversed"),
+                            yaxis  = dict(autorange="reversed", automargin=True),
                             height = max(100, len(sw_data) * 28 + 30),
-                            margin = dict(l=100, r=60, t=4, b=4),
+                            margin = dict(l=10, r=60, t=4, b=4),
                             plot_bgcolor = "#f7f8fa",
                         )
                         st.plotly_chart(fig, use_container_width=True, key=f"card_chart_{sid}")

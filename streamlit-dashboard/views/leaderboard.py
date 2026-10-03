@@ -182,9 +182,9 @@ def render(lang: str) -> None:
 
             fig.update_layout(
                 xaxis        = dict(showticklabels=False, showgrid=False, zeroline=False, range=[0, bar_len.max() * 1.15]),
-                yaxis        = dict(autorange="reversed"),
+                yaxis        = dict(autorange="reversed", automargin=True),
                 height       = max(160, n * 38 + 50),
-                margin       = dict(l=140, r=40, t=10, b=10),
+                margin       = dict(l=10, r=40, t=10, b=10),
                 plot_bgcolor = "#f7f8fa",
             )
             st.plotly_chart(fig, use_container_width=True)

@@ -270,9 +270,9 @@ def render(lang: str) -> None:
     fig_pb.update_layout(
         title        = t("pb_chart_title", lang),
         xaxis        = dict(showticklabels=False, showgrid=False, zeroline=False),
-        yaxis        = dict(autorange="reversed"),
+        yaxis        = dict(autorange="reversed", automargin=True),
         height       = max(160, len(pb_data) * 42 + 60),
-        margin       = dict(l=160, r=100, t=40, b=10),
+        margin       = dict(l=10, r=70, t=40, b=10),
         plot_bgcolor = "#f7f8fa",
     )
     st.plotly_chart(fig_pb, use_container_width=True)
@@ -549,7 +549,7 @@ def render(lang: str) -> None:
                 showlegend    = False,
                 plot_bgcolor  = "#ffffff",
                 paper_bgcolor = "#ffffff",
-                margin        = dict(l=20, r=80, t=20, b=30),
+                margin        = dict(l=20, r=60, t=20, b=30),
             )
             st.plotly_chart(fig, use_container_width=True)
 
